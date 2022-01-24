@@ -6,12 +6,12 @@
 import math
 from statistics import mean
 
-def colebrook_friction_factor(ϵD, Re):
+def iterative_solve_colebrook(ϵD, Re):
     '''Iteratively solves the self-referential Colebrook-White Equation for the Darcy Friction Factor f:
     
     ϵD : Relative Roughness [unitless], ϵ/D
     Re : Reynolds Number [unitless], pipe-diameter based Re_D
-'''
+    '''
     if Re < 2300:
         # Laminar Flow, friction factor derivable from Poiseuille Flow
         return 64/Re
@@ -41,8 +41,15 @@ def colebrook_friction_factor(ϵD, Re):
     #else:
         # TODO error handling and defaults
 
+def fully_turbulent_f(ϵD):
+    '''Returns the fully-turbulent friction factor from the Colebrook Equation
+
+    ϵD : Relative Roughness [unitless], ϵ/D
+    '''
+    return 1 / (-2.0*math.log10(ϵD/3.7))**2
+
 # test case, ran as main
 if __name__ == "__main__":
     # treat program as a calculator, and as for user input to solve for
-    f = colebrook_friction_factor(float(input("Relative Roughness ϵ/D = ")), float(input("Reynolds Number Re = ")))
+    f = iterative_solve_colebrook(float(input("Relative Roughness ϵ/D = ")), float(input("Reynolds Number Re = ")))
     print(f"The friction factor is {f}")

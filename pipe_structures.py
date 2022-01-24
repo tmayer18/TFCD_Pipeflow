@@ -37,7 +37,7 @@ class Pipe():
         returns (M,b) s.t. M*p_n+1 = b
         '''
         # translate inputs to easier-to-read form
-        p1, p2, ṁ1, ṁ2 = p_n.A1 # flatten column vector into iteratable
+        p1, p2, ṁ1, ṁ2 = np.array(p_n).flatten() # flatten column vector into iteratable
         ρ = fluid["ρ"]
         μ = fluid["μ"]
         γ = ρ*g

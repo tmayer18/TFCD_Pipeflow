@@ -108,7 +108,7 @@ class Minor():
         # form coefficient matrix
         M = np.array([[1, -1, 16*ṁ1/(ρ*π**2*self.Di**4), -16*(1+self.K)*ṁ2/(ρ*π**2*self.Do**4)], # Cons-of-Energy
                     [0, 0, 1, -1]])          # Cons-of-Momentum
-        b = np.array([[8*ṁ1**2/(ρ*π**2*self.Di**4) - (8+self.K)*ṁ2**2/(ρ*π**2*self.Do**4)], # COE
+        b = np.array([[8*ṁ1**2/(ρ*π**2*self.Di**4) - 8*(1+self.K)*ṁ2**2/(ρ*π**2*self.Do**4)], # COE
                     [0]])   # COM
 
         # expand the columns according to what nodes the pipe has

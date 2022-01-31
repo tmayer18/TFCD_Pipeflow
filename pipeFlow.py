@@ -1,7 +1,7 @@
 # MAE 413 - TFCD
-# Homework 3
+# Homework 4
 # Timothy Mayer
-# 1/23/2022
+# 1/31/2022
 
 # Will compute the pressure [psf] and flowrate [slug/s] at the ends of a pipe
 
@@ -15,10 +15,11 @@ NUM_STATES = 2 # number of states per node to solve for
 # Currently pressure, p and mass flowrate, ṁ
 
 pipe_network = (
-    pipes.Minor(1.049/12,  1.049/12, 0, 1, 30*fully_turbulent_f(4.95e-5/(1.049/12))),
+    #pipes.Minor(1.049/12,  1.049/12, 0, 1, 30*fully_turbulent_f(2e-4/(1.049/12))),
+    pipes.Minor(4/12, 2/12, 0, 1, 0),
     #pipes.Pipe(6, 0.936/12, 0, 1, 2e-4/(.936/12), 1),
-    bc.BoundaryCondition(0, 1.5*144, "pressure"), 
-    bc.BoundaryCondition(1, 0*144, "pressure")
+    bc.BoundaryCondition(0, 14.7*144, "pressure"), 
+    bc.BoundaryCondition(1, 8*144, "pressure")
 )
 
 water = {
@@ -26,7 +27,7 @@ water = {
     "μ": 2.34e-5, # [lbf-s/ft^2] : Viscosity
     }
 
-max_iterations = 60 # maximum allowable iterations
+max_iterations = 40 # maximum allowable iterations
 desired_tolerance = 1e-8 # desired tolerance in solution. When to cease iteration
 
 # %% Pre-printing information
@@ -64,7 +65,6 @@ while abs(err) > desired_tolerance and i <= max_iterations:
     p_n1 = np.linalg.solve(A,b) # solve linear equation Ax=b
 
     err = max(abs( (p_n-p_n1)/(p_n+1e-16) )) # largest percent change in any solution value
-    print((p_n-p_n1)/(p_n+1e-16))
 
     print(f"Solution Vector at iteration {i}: {p_n1}")
     print(f"Error at iteration {i}: {err}")
@@ -73,6 +73,14 @@ while abs(err) > desired_tolerance and i <= max_iterations:
     p_n = p_n1.copy() # p_n = p_n+1
     # copy is necessary cause pointers. Otherwise they will be the same object
 
-print(f"The solution is determined to be {p_n}")
+# %% Print the results
 if i >= max_iterations:
     print("ERROR: The solution is not converged. Iterations terminated after iteration limit was reached")
+
+print(" SOLUTION ")
+print("Node     ṁ          Q         p           ρ          μ")
+print("      [slug/s]    [gpm]     [psia]    [slug/cf]  [lbf*s/ft^2]")
+for i in range(N):
+    print(f"{i}    {float(p_n[i+N]):0.7f}    {float(p_n[i+N]/water['ρ']/0.13368*60):0.2f}      {float(p_n[i]/144):4.2f}      {water['ρ']}      {water['μ']}")
+
+input("\nPress any key to exit >> ")

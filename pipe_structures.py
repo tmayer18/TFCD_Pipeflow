@@ -1,7 +1,7 @@
 # MAE 413 - TFCD
-# Homework 3
+# Homework 4
 # Timothy Mayer
-# 1/21/2022
+# 1/31/2022
 
 import numpy as np
 π = np.pi

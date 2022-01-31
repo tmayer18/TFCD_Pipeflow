@@ -14,12 +14,18 @@ from colebrook_friction_factor import fully_turbulent_f
 NUM_STATES = 2 # number of states per node to solve for
 # Currently pressure, p and mass flowrate, ṁ
 
+D = 4.026/12 # [ft] : pipe diameter
+ϵD = 4.47e-4 # [ul] : relative roughness, ϵ/D
+ft = fully_turbulent_f(ϵD) # [ul] : fully turbulent friction factor
 pipe_network = (
-    #pipes.Minor(1.049/12,  1.049/12, 0, 1, 30*fully_turbulent_f(2e-4/(1.049/12))),
-    pipes.Minor(4/12, 2/12, 0, 1, 0),
-    #pipes.Pipe(6, 0.936/12, 0, 1, 2e-4/(.936/12), 1),
-    bc.BoundaryCondition(0, 14.7*144, "pressure"), 
-    bc.BoundaryCondition(1, 8*144, "pressure")
+    pipes.Pipe(50, D, 0, 1, ϵD, 0),
+    pipes.Minor(D, D, 1, 2, 30*ft), # elbow
+    pipes.Pipe(10, D, 2, 3, ϵD, 10), 
+    pipes.Minor(D, D, 3, 4, 30*ft), # elbow
+    pipes.Minor(D, D, 4, 5, 3*ft), # ball valve
+    pipes.Pipe(50, D, 5, 6, ϵD, 0),
+    bc.BoundaryCondition(0, (50+14.7)*144, "pressure"), 
+    bc.BoundaryCondition(6, 14.7*144, "pressure")
 )
 
 water = {
@@ -60,14 +66,14 @@ while abs(err) > desired_tolerance and i <= max_iterations:
         A = np.append(A, Ai, axis=0) # append matrix-linearized equations to the matrix
         b = np.append(b, bi, axis=0)
     
-    print(f"CHECK: the length of the matrix is {len(A)}x{len(A[0])}")
+    # print(f"CHECK: the length of the matrix is {len(A)}x{len(A[0])}")
 
     p_n1 = np.linalg.solve(A,b) # solve linear equation Ax=b
 
     err = max(abs( (p_n-p_n1)/(p_n+1e-16) )) # largest percent change in any solution value
 
-    print(f"Solution Vector at iteration {i}: {p_n1}")
-    print(f"Error at iteration {i}: {err}")
+    # print(f"Solution Vector at iteration {i}: {p_n1}")
+    # print(f"Error at iteration {i}: {err}")
 
     i+=1
     p_n = p_n1.copy() # p_n = p_n+1

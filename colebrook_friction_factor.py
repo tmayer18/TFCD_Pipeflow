@@ -51,5 +51,9 @@ def fully_turbulent_f(ϵD):
 # test case, ran as main
 if __name__ == "__main__":
     # treat program as a calculator, and as for user input to solve for
-    f = iterative_solve_colebrook(float(input("Relative Roughness ϵ/D = ")), float(input("Reynolds Number Re = ")))
-    print(f"The friction factor is {f}")
+    if input("Fully Turbulent Solver? y/n >> ").lower() == "y":
+        f = fully_turbulent_f(float(input("Relative Roughness ϵ/D = ")))
+        print(f"The fully-turbulent friction factor is {f}")
+    else:
+        f = iterative_solve_colebrook(float(input("Relative Roughness ϵ/D = ")), float(input("Reynolds Number Re = ")))
+        print(f"The friction factor is {f}")

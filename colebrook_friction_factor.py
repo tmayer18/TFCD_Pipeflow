@@ -57,3 +57,5 @@ if __name__ == "__main__":
     else:
         f = iterative_solve_colebrook(float(input("Relative Roughness ϵ/D = ")), float(input("Reynolds Number Re = ")))
         print(f"The friction factor is {f}")
+
+    input("\nPress any key to exit >> ")

@@ -14,18 +14,33 @@ from colebrook_friction_factor import fully_turbulent_f
 NUM_STATES = 2 # number of states per node to solve for
 # Currently pressure, p and mass flowrate, ṁ
 
-D = 4.026/12 # [ft] : pipe diameter
-ϵD = 4.47e-4 # [ul] : relative roughness, ϵ/D
+D = 1.610/12 # [ft] : pipe diameter
+ϵ = 1.8e-3/12 # [ft] : roughness
+ϵD = ϵ/D # [ul] : relative roughness, ϵ/D
 ft = fully_turbulent_f(ϵD) # [ul] : fully turbulent friction factor
+K_elb = 30*ft
+K_cont = 0.0214996
+print(f"Contraction Loss Coefficient (exit-based) K1 = {K_cont}")
 pipe_network = (
-    pipes.Pipe(50, D, 0, 1, ϵD, 0),
-    pipes.Minor(D, D, 1, 2, 30*ft), # elbow
-    pipes.Pipe(10, D, 2, 3, ϵD, 10), 
-    pipes.Minor(D, D, 3, 4, 30*ft), # elbow
-    pipes.Minor(D, D, 4, 5, 3*ft), # ball valve
-    pipes.Pipe(50, D, 5, 6, ϵD, 0),
-    bc.BoundaryCondition(0, (50+14.7)*144, "pressure"), 
-    bc.BoundaryCondition(6, 14.7*144, "pressure")
+    pipes.Pipe(15, D, 0,1, ϵD, 0),
+    pipes.Tee(D, 1, (2,6), (2,6), ϵD), 
+    pipes.Pipe(8, D, 2,3, ϵD, 8),
+    pipes.Minor(D, D, 3,4, K_elb),
+    pipes.Pipe(85, D, 4,5, ϵD, 0),
+    bc.BoundaryCondition(5, 0, "pressure"),
+    bc.BoundaryCondition(5, 0.12, "mass_flowrate"),
+    pipes.Pipe(6, D, 6,7, ϵD, -6),
+    pipes.Tee(D, 7, (8,15), (7,8), ϵD),
+    pipes.Pipe(2, D, 8,9, ϵD, -2),
+    pipes.Minor(D, D, 9,10, K_elb),
+    pipes.Pipe(10, D, 10,11, ϵD, 0),
+    pipes.Tee(D, (11,18), 12, (11,12), ϵD),
+    pipes.Minor(D, 1.049/12, 12,13, K_cont),
+    pipes.Pipe(10, 1.049/12, 13,14, ϵD, 0),
+    pipes.Pipe(10, D, 15,16, ϵD, 0),
+    pipes.Minor(D, D, 16,17, K_elb),
+    pipes.Pipe(2, D, 17,18, ϵD, -2),
+    bc.BoundaryCondition(14, 0, "pressure")
 )
 
 water = {
@@ -40,14 +55,16 @@ desired_tolerance = 1e-8 # desired tolerance in solution. When to cease iteratio
 # print some stuff about number of piping elements, and size of M matrix
 N = 0 # number of nodes
 nodes = []
+last_node = -1
 pipe_likes = 0
 for elem in pipe_network:
     N += elem.num_nodes
-    if type(elem) in [pipes.Minor, pipes.Pipe]:
+    last_node = max((last_node,)+elem.nodes)
+    if type(elem) in [pipes.Minor, pipes.Pipe, pipes.Tee]:
         pipe_likes += 1 # count the number of pipe-likes in the network
 
 N = int(N/2) # Each node in the network shows up exactly twice in the network, at the start and end of its pipe-like, or as a boundary condition
-# TODO more error-checking on the pipe network to ensure that is is valid
+assert last_node+1 == N, "There aren't enough equations!"
 print(f"There are {pipe_likes} pipe-likes in the network, requiring a {N*2}x{N*2} matrix to solve\n")
 
 
@@ -85,7 +102,7 @@ if i >= max_iterations:
 
 print(" SOLUTION ")
 print("Node     ṁ          Q         p           ρ          μ")
-print("      [slug/s]    [gpm]     [psia]    [slug/cf]  [lbf*s/ft^2]")
+print("      [slug/s]    [gpm]     [psig]    [slug/cf]  [lbf*s/ft^2]")
 for i in range(N):
     print(f"{i}    {float(p_n[i+N]):0.7f}    {float(p_n[i+N]/water['ρ']/0.13368*60):0.2f}      {float(p_n[i]/144):4.2f}      {water['ρ']}      {water['μ']}")
 

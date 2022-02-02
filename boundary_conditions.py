@@ -14,9 +14,10 @@ class BoundaryCondition():
         self.node = node # [index] : location node this boundary condition applies to
         self.value = value # [psf] : known value at this location TODO other units and BC types
         self.bc_type = bc_type # [str] : the kind of bc this is
-        assert bc_type in ["pressure"], f"Boundary condition '{bc_type}' is not supported!"
+        assert bc_type in ["pressure", "mass_flowrate"], f"Boundary condition '{bc_type}' is not supported!"
 
         self.num_nodes = 1
+        self.nodes = (node,)
 
     def compute(self, p_n, fluid, N):
         '''alias redirect for the compute call
@@ -36,7 +37,12 @@ class BoundaryCondition():
         returns (M,b) to be appended to a full 2Nx2N matrix s.t. M*p_n+1 = b
         '''
         M = np.zeros((1,2*N))
-        M[0,self.node] = 1 # TODO currently hardcoded for a pressure boundary
+
+        if self.bc_type == "pressure":
+            M[0,self.node] = 1
+        elif self.bc_type == "mass_flowrate":
+            M[0,self.node+N] = 1
+
         b = np.array([[self.value]])
 
         return M,b

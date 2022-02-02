@@ -7,7 +7,7 @@ import numpy as np
 π = np.pi
 g = 32.174 # [ft/s^2] : Acceleration due to gravity
 
-from colebrook_friction_factor import iterative_solve_colebrook
+from colebrook_friction_factor import fully_turbulent_f, iterative_solve_colebrook
 
 # Module contains classes for encapsulating data around various pipe-flow components
 
@@ -20,16 +20,12 @@ class Pipe():
         self.inlet_node = inlet_node # [index] : location node of pipe inlet
         self.outlet_node = outlet_node # [index] : location node of pipe outlet
         self.ϵD  = ϵD # [ul] : Relative Roughness, ϵ/D
-        self.Δz = Δz # [ft] : Elevation change, z_out-z_in
+        self.Δz = Δz # [ft] : Elevation change, z_out-z_inself.
 
         self.num_nodes = 2 # number of nodes, ∴ number of eqs
+        self.nodes = (inlet_node, outlet_node)
 
         self.compute = self.compute_pipe # redirect compute call to compute_pipe, as an alias
-        
-
-    # def friction_factor():
-    #     '''Returns the friction factor of the pipe, either from ...'''
-    #     # do I even want this? Should I support ṁ and V inputs for this?
 
     def compute_pipe(self, p_n, fluid, N):
         '''Returns the linear algebra matricies to solve for the next iteration in a pipe
@@ -58,7 +54,7 @@ class Pipe():
 
         # form coefficient matrix
         M = np.array([[1, -1, 0, COE_coef*ṁ2], # Cons-of-Energy
-                    [0, 0, 1, -1]])          # Cons-of-Momentum
+                    [0, 0, 1, -1]])          # Cons-of-Mass
         b = np.array([[γ*self.Δz + COE_coef/2*ṁ2**2], # COE
                     [0]])   # COM
 
@@ -78,6 +74,7 @@ class Minor():
         self.K = K # [ul] : Loss Coefficient, typically K=c*ft
 
         self.num_nodes = 2 # number of nodes, ∴ number of eqs
+        self.nodes = (inlet_node, outlet_node)
 
         self.compute = self.compute_minor # redirect alias for compute -> compute_minor
 
@@ -99,15 +96,10 @@ class Minor():
         ṁ2 = p_n[self.outlet_node + N]
 
         ρ = fluid["ρ"]
-        # μ = fluid["μ"] # term unused
-        # γ = ρ*g
-        
-        # Re = 4*ṁ1/(π*μ*self.D)
-        # f = iterative_solve_colebrook(self.ϵD, Re)
 
         # form coefficient matrix
         M = np.array([[1, -1, 16*ṁ1/(ρ*π**2*self.Di**4), -16*(1+self.K)*ṁ2/(ρ*π**2*self.Do**4)], # Cons-of-Energy
-                    [0, 0, 1, -1]])          # Cons-of-Momentum
+                    [0, 0, 1, -1]])          # Cons-of-Mass
         b = np.array([[8*ṁ1**2/(ρ*π**2*self.Di**4) - 8*(1+self.K)*ṁ2**2/(ρ*π**2*self.Do**4)], # COE
                     [0]])   # COM
 
@@ -118,8 +110,12 @@ class Minor():
 class Tee():
     '''Defines a tee object, containing dimensions and nodal connections'''
 
-    def __init__(self, D, inlet_nodes, outlet_nodes, run_nodes, ϵD, K_run=20, K_branch=60):
+    def __init__(self, D, inlet_nodes, outlet_nodes, run_nodes, ϵD, C_run=20, C_branch=60):
         self.D = D # [ft] : Tee Diameter (only supports constant diameter tees)
+        ft = fully_turbulent_f(ϵD)
+        K_run = C_run*ft
+        K_branch = C_branch*ft
+
         # a Tee here must only have 3 legs, either 1_in->2_out or 2_in->1_out
         if type(inlet_nodes) == int: # (idx_1, idx_2) : Nodes of inlets, supports up to 2
             self.inlet_nodes = (inlet_nodes,)
@@ -132,10 +128,100 @@ class Tee():
             self.outlet_nodes = tuple(outlet_nodes)
 
         self.run_nodes = tuple(run_nodes) # (idx1, idx2) : Nodes of straight run section of tee
-    
+        if len(self.outlet_nodes) == 2:
+            self.configuration = "dual_outlet"
+        else:
+            self.configuration = "dual_inlet"
+
         # input validation
         assert len(self.inlet_nodes) + len(self.outlet_nodes) <= 3, "Only 3-port tees are supported"
         assert all([n in self.inlet_nodes+self.outlet_nodes for n in self.run_nodes]), "run_nodes are not inlets or outlets"
+
+        # determine which loss coefficients go where in compute
+        if (self.inlet_nodes[0] in run_nodes) and (self.outlet_nodes[0] in run_nodes):
+            # if the first inlet and first outlet are in a run
+            self.K1 = K_run
+        else:
+            self.K1 = K_branch
+
+        if (self.inlet_nodes[-1] in run_nodes) and (self.outlet_nodes[-1] in run_nodes):
+            # if the second inlet and second outlet are in a run (if there is no second, use the first)
+            self.K1 = K_run
+        else:
+            self.K2 = K_branch
+
+        self.num_nodes = 3 # number of nodes, ∴ number of eqs
+        self.nodes = self.inlet_nodes+self.outlet_nodes
+
+        self.compute = self.compute_tee # redirect alias for compute -> compute_minor
+
+    def compute_tee(self, p_n, fluid, N):
+        '''Returns the linear algebra matricies to solve for the next iteration in a minor-loss component
+
+        p_n : solution column vector [p0, p1, p2, ..., ṁ0, ṁ1, ṁ2, ...], at current iteration n, for each node index
+        fluid : Dict of fluid properties {ρ:val, μ:val}
+        N : total number of nodes, indicates 1/2 number of eqs ie size of matrix
+
+        returns (M,b) to be appended to a full 2Nx2N matrix s.t. M*p_n+1 = b
+        '''
+        # translate inputs to easier-to-read form
+        p_n = np.array(p_n).flatten() # flatten column vector into single list
+
+        # p_in1 = p_n[self.inlet_nodes[0]] # pressure terms unused
+        # p_in2 = p_n[self.inlet_nodes[-1]]
+        # p_out1 = p_n[self.outlet_nodes[0]]
+        # p_out2 = p_n[self.outlet_nodes[-1]]
+        ṁ_in1 = p_n[self.inlet_nodes[0] + N]
+        ṁ_in2 = p_n[self.inlet_nodes[-1] + N]
+        ṁ_out1 = p_n[self.outlet_nodes[0] + N]
+        ṁ_out2 = p_n[self.outlet_nodes[-1] + N]
+        # in1 and in2 will be the same for single-inlet systems, and vice versa for single-outlet
+        
+        ṁ_in = ṁ_in1 # ease of access alias
+        ṁ_out = ṁ_out1
+
+        ρ = fluid["ρ"]
+        K1 = self.K1 # ease of access
+        K2 = self.K2
+
+        # coefficient constant
+        C = 8/(ρ*π**2*self.D**4)
+
+        # form coefficient matricies
+        if self.configuration == "dual_outlet":
+            M = np.array([
+                [1, -1,  0,   2*C*ṁ_in,   -2*C*(K1+1)*ṁ_out1,           0], # COE inlet->outlet1
+                [1,  0, -1,   2*C*ṁ_in,         0,            -2*C*(K2+1)*ṁ_out2], # COE inlet->outlet2
+                [0, 0, 0, 1, -1, -1] # COM
+            ])
+
+            b = np.array([
+                [C*(ṁ_in**2-(K1+1)*ṁ_out1**2)],
+                [C*(ṁ_in**2-(K2+1)*ṁ_out2**2)],
+                [0]
+            ])
+
+        elif self.configuration == "dual_inlet":
+            M = np.array([
+                [1,  0, -1,   2*C*(1-K1)*ṁ_in1,         0,           -2*C*ṁ_out], # COE inlet1->outlet
+                [0,  1, -1,          0,         2*C*(1-K2)*ṁ_in2,    -2*C*ṁ_out], # COE inlet2->outlet
+                [0, 0, 0, 1, 1, -1] # COM
+            ])
+
+            b = np.array([
+                [C*((1-K1)*ṁ_in1**2-ṁ_out**2)],
+                [C*((1-K2)*ṁ_in2**2-ṁ_out**2)],
+                [0]
+            ])
+        else:
+            raise Exception("Tee Object failure! Was neither dual_inlet nor dual_outlet")
+
+        # expand matrix to full NxN size
+        all_nodes = self.nodes
+        M = matrix_expander(M, (3,N*2), (0,1,2), all_nodes+tuple(map(lambda x:x+N, all_nodes)))
+
+        return M,b
+
 
 def matrix_expander(A, NxM, row:tuple, col:tuple=(0,)):
     '''Expands matrix so that it's original elements lie within the rows and columns of a NxN matrix
@@ -180,4 +266,7 @@ if __name__ == "__main__":
     # print(b)
     # p = np.linalg.solve(A, b) # solve Ax = b
     # print(p)
+
+    my_tee = Tee(6, (0,1), 2, (0,2) )
+
     pass

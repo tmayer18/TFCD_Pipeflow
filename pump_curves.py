@@ -5,7 +5,9 @@
 
 import scipy.interpolate as intp
 import numpy as np
+g = 32.174 # [ft/s^2] : Acceleration due to gravity
 from pipe_structures import matrix_expander
+
 
 # Module contains classes for encapsuling data for pumps in pipe-flow networks
 
@@ -45,8 +47,9 @@ class PumpCurve():
         '''
         assert units in ["QH", "mdp"], "Invalid units specified"
         if units == "QH":
-            self.flowrate = curve_flowrate # TODO conversion factors
-            self.head = curve_pressure_rise
+            ρ = fluid['ρ']
+            self.flowrate = curve_flowrate *0.133681*ρ/60 # [gpm]->[slug/s] : Mass FLowrate
+            self.head = curve_pressure_rise *ρ*g # [ft]->[psf] : Pressure rise across pump
         elif units == "mdp":
             self.flowrate = curve_flowrate # [slug/s] : Mass Flowrate
             self.head = curve_pressure_rise # [psf] : Pressure rise across pump
@@ -65,14 +68,18 @@ class Pump():
     '''Defines a pump object, containing nodal connectioins and the pump-curve it behaves by'''
 
     def __init__(self, inlet_node, outlet_node, pump_curve: PumpCurve):
-        self.inlet_node = inlet_node # [index] : location node of pipe inlet
-        self.outlet_node = outlet_node # [index] : location node of pipe outlet
+        '''initialize an instance of Pump
+        inlet_node [index] : location node of pump inlet
+        outlet_node [index] : location node of pump outlet
+        pump_curve : PumpCurve object defining the curve that describes the pump'''
+        self.inlet_node = inlet_node # [index] : location node of pump inlet
+        self.outlet_node = outlet_node # [index] : location node of pump outlet
         self.pump_curve = pump_curve # [PumpCurve object] : defines details of the pump's curve
 
         self.num_nodes = 2 # number of nodes, ∴ number of eqs
         self.nodes = (inlet_node, outlet_node)
 
-        self.compute = self.compute_pump # redirect compute call to compute_pipe, as an alias
+        self.compute = self.compute_pump # redirect compute call to compute_pump, as an alias
 
     def compute_pump(self, p_n, fluid, N):
         '''Returns the linear algebra matrices to solve for the next iteration in a pump component
@@ -87,8 +94,7 @@ class Pump():
         p_n = np.array(p_n).flatten() # flatten column vector into a single list
 
         # check that the fluid is valid for this curve
-        if fluid != None or fluid != self.pump_curve.fluid:
-            print("WARNING! compute_pump is being called with a different fluid than the Pump's curve is valid for")
+        assert (fluid == None or fluid == self.pump_curve.fluid), "compute_pump is being called with a different fluid than the Pump's curve is valid for! Use 'None' as a fluid to forcibly run anyway"
 
         # p1 = p_n[self.inlet_node]
         # p2 = p_n[self.outlet_node]
@@ -110,12 +116,12 @@ class Pump():
         M = matrix_expander(M, (2,N*2), (0,1), (self.inlet_node, self.outlet_node, N+self.inlet_node, N+self.outlet_node))
         return M,b
     
-# if __name__ == "__main__":
-#     a = PumpCurve([1,2,3],[0,10,5])
-#     print(a)
-#     print(a(1))
-#     print(a.deriv(1))
-#     my_pump = Pump(0,1,a)
-#     A,b = my_pump.compute(np.array([0.1,0.1,0.1,0.1]), None, 2)
-#     print(A)
-#     print(b)
+if __name__ == "__main__":
+    a = PumpCurve([1,2,3],[0,10,5], fluid={"ρ":10})
+    print(a)
+    print(a(1))
+    print(a.deriv(1))
+    my_pump = Pump(0,1,a)
+    A,b = my_pump.compute(np.array([0.1,0.1,0.1,0.1]), None, 2)
+    print(A)
+    print(b)

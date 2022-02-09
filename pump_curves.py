@@ -21,16 +21,21 @@ class CappedPCHIP(intp.PchipInterpolator):
         '''override for call to add edge-case handling'''
         y = super(CappedPCHIP, self).__call__(x) # evaluate the default pchip at x
 
-        if np.isnan(y): # x was outside of known bounds for the pump curve. 
-            min_x = min(self.x)
-            max_x = max(self.x)
-            if x < min_x:
-                return self(min_x)
-            elif x > max_x:
-                return self(max_x)
-            else:
-                raise ValueError # something has gone wrong in pchip
-        return y
+        def cap(xi, yi): # helper function to map to each element of the output array
+            '''returns f(xi) if within valid range, otherwise f(x_min) or f(x_max)'''
+            if np.isnan(yi): # x was outside of known bounds for the pump curve. 
+                min_x = min(self.x)
+                max_x = max(self.x)
+                if xi < min_x:
+                    return self.__call__(min_x)
+                elif xi > max_x:
+                    return self.__call__(max_x)
+                else:
+                    raise ValueError # something has gone wrong in pchip
+            return yi
+
+        map_func = np.vectorize(cap)
+        return map_func(x, y)
 
 
 class PumpCurve():
@@ -117,7 +122,7 @@ class Pump():
         return M,b
     
 if __name__ == "__main__":
-    a = PumpCurve([1,2,3],[0,10,5], fluid={"ρ":10})
+    a = PumpCurve(np.array([1,2,3]),np.array([0,10,5]), fluid={"ρ":10})
     print(a)
     print(a(1))
     print(a.deriv(1))

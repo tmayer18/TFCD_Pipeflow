@@ -15,12 +15,20 @@ class Pipe():
     '''Defines a pipe object, containing dimensions and nodal connections'''
 
     def __init__(self, L, D, inlet_node, outlet_node, ϵD, Δz):
+        '''initialize an instance of Pipe
+        L [ft] : Length of Pipe
+        D [ft] : Diameter of Pipe
+        inlet_node [index] : location node of pipe inlet
+        outlet_node [index] : location node of pipe outlet
+        ϵD [ul] : Relative Rouchness, ϵ/D
+        Δz [ft] : Elevation change, z_out-z_in'''
+
         self.L = L # [ft] : Length of pipe
         self.D = D # [ft] : Diameter of pipe
         self.inlet_node = inlet_node # [index] : location node of pipe inlet
         self.outlet_node = outlet_node # [index] : location node of pipe outlet
         self.ϵD  = ϵD # [ul] : Relative Roughness, ϵ/D
-        self.Δz = Δz # [ft] : Elevation change, z_out-z_inself.
+        self.Δz = Δz # [ft] : Elevation change, z_out-z_in.
 
         self.num_nodes = 2 # number of nodes, ∴ number of eqs
         self.nodes = (inlet_node, outlet_node)
@@ -67,6 +75,13 @@ class Minor():
     '''Defines a minor-loss object, (ex elbow, nozzle, ect...), containing dimensions and nodal connections'''
 
     def __init__(self, Di, Do, inlet_node, outlet_node, K):
+        '''initialize an instance of Minor
+        Di [ft] : Inlet Diameter
+        Do [ft] : Outlet Diameter
+        inlet_node [index] : location node of inlet
+        outlet_node [index] : location node of outlet
+        K [ul] : Loss Coefficient, typically K=c*ft'''
+
         self.Di = Di # [ft] : Inlet Diameter
         self.Do = Do # [ft] : Outlet Diameter
         self.inlet_node = inlet_node # [index] : location node of inlet
@@ -98,10 +113,15 @@ class Minor():
         ρ = fluid["ρ"]
 
         # form coefficient matrix
-        M = np.array([[1, -1, 16*ṁ1/(ρ*π**2*self.Di**4), -16*(1+self.K)*ṁ2/(ρ*π**2*self.Do**4)], # Cons-of-Energy
-                    [0, 0, 1, -1]])          # Cons-of-Mass
-        b = np.array([[8*ṁ1**2/(ρ*π**2*self.Di**4) - 8*(1+self.K)*ṁ2**2/(ρ*π**2*self.Do**4)], # COE
-                    [0]])   # COM
+        M = np.array([
+            [1, -1, 16*ṁ1/(ρ*π**2*self.Di**4), -16*(1+self.K)*ṁ2/(ρ*π**2*self.Do**4)], # Cons-of-Energy
+            [0, 0, 1, -1]          # Cons-of-Mass
+        ])
+
+        b = np.array([
+            [8*ṁ1**2/(ρ*π**2*self.Di**4) - 8*(1+self.K)*ṁ2**2/(ρ*π**2*self.Do**4)], # COE
+            [0]   # COM
+        ])
 
         # expand the columns according to what nodes the pipe has
         M = matrix_expander(M, (2,N*2), (0,1), (self.inlet_node, self.outlet_node, N+self.inlet_node, N+self.outlet_node))
@@ -111,6 +131,13 @@ class Tee():
     '''Defines a tee object, containing dimensions and nodal connections'''
 
     def __init__(self, D, inlet_nodes, outlet_nodes, run_nodes, ϵD, C_run=20, C_branch=60):
+        '''initialize an instance of Tee
+        D [ft] : Tee Diameter (only constant diameter tees supported)
+        inlet_nodes (idx, idx) : Up to 2 inlet node locations
+        outlet_nodes (idx, idx) : Up to 2 outlet node locations
+        run_nodes (idx, idx) : Which 2 nodes form the run of the tee
+        ϵD [ul] : Relative roughness'''
+        
         self.D = D # [ft] : Tee Diameter (only supports constant diameter tees)
         ft = fully_turbulent_f(ϵD)
         K_run = C_run*ft
@@ -267,6 +294,6 @@ if __name__ == "__main__":
     # p = np.linalg.solve(A, b) # solve Ax = b
     # print(p)
 
-    my_tee = Tee(6, (0,1), 2, (0,2) )
+    my_tee = Tee(6, (0,1), 2, (0,2), 1)
 
     pass

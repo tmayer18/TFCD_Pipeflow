@@ -5,6 +5,7 @@
 
 import scipy.interpolate as intp
 import numpy as np
+import matplotlib.pyplot as plt
 g = 32.174 # [ft/s^2] : Acceleration due to gravity
 from pipe_structures import matrix_expander
 
@@ -68,6 +69,14 @@ class PumpCurve():
     def __call__(self, *args): # make object callable as function, like pchip operates
         return self.pchip_curve(*args)
 
+    def plot(self, range=None) -> None:
+        '''range (minx, maxx) : Range of values to plot'''
+        if range==None:
+            range=(max(self.flowrate), min(self.flowrate))
+        x = np.linspace(range[0], range[1])
+        y = self.__call__(x)
+        plt.gca().plot(x, y)
+
 
 class Pump():
     '''Defines a pump object, containing nodal connectioins and the pump-curve it behaves by'''
@@ -122,7 +131,7 @@ class Pump():
         return M,b
     
 if __name__ == "__main__":
-    a = PumpCurve(np.array([1,2,3]),np.array([0,10,5]), fluid={"ρ":10})
+    a = PumpCurve(np.array([1,2,3]),np.array([0,10,5]), fluid={"ρ":10}, units="mdp")
     print(a)
     print(a(1))
     print(a.deriv(1))
@@ -130,3 +139,7 @@ if __name__ == "__main__":
     A,b = my_pump.compute(np.array([0.1,0.1,0.1,0.1]), None, 2)
     print(A)
     print(b)
+
+    print(a(np.linspace(0,5)))
+    a.plot()
+    plt.show()

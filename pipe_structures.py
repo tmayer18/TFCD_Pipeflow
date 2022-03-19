@@ -58,12 +58,12 @@ class Pipe():
         
         Re = 4*ṁ1/(π*μ*self.D)
         f = iterative_solve_colebrook(self.ϵD, Re)
-        COE_coef = -16*f*self.L/(ρ*π**2*self.D**5)
+        COE_coef = 16/(ρ*π**2*self.D**4)
 
         # form coefficient matrix
-        M = np.array([[1, -1, 0, COE_coef*ṁ2], # Cons-of-Energy
+        M = np.array([[1, -1, COE_coef*ṁ1, -(f*self.L/self.D + 1)*COE_coef*ṁ2], # Cons-of-Energy
                     [0, 0, 1, -1]])          # Cons-of-Mass
-        b = np.array([[γ*self.Δz + COE_coef/2*ṁ2**2], # COE
+        b = np.array([[γ*self.Δz + COE_coef/2*ṁ1**2 -(f*self.L/self.D +1)*COE_coef/2*ṁ2**2], # COE
                     [0]])   # COM
 
         # expand the columns according to what nodes the pipe has
@@ -294,6 +294,5 @@ if __name__ == "__main__":
     # p = np.linalg.solve(A, b) # solve Ax = b
     # print(p)
 
-    my_tee = Tee(6, (0,1), 2, (0,2), 1)
-
+    # my_tee = Tee(6, (0,1), 2, (0,2), 1)
     pass

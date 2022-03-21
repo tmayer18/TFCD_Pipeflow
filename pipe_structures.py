@@ -15,7 +15,7 @@ class FluidFlow():
     '''Parent class for pipes/elbows/annulus ect...
     Contains momentum and mass conservation equations solving for pressure and massflow'''
 
-    def __init__(self, Di_in, Do_in, Di_out, Do_out, inlet_node, outlet_node, L, ϵD, Δz):
+    def __init__(self, Di_in, Do_in, Di_out, Do_out, inlet_node, outlet_node, loss, L, ϵD, K, Δz):
         '''initialize an instance of FlowFlow
         Di_in [ft] : Inlet annulus inner diameter
         Do_in [ft] : Inlet annulus outer diameter
@@ -23,8 +23,10 @@ class FluidFlow():
         Do_out [ft] : Outlet annulus outer diameter
         inlet_node [idx] : location node of the inlet
         outlet_noew [idx] : location node of the outlet
+        loss [str] : type of losses - 'major' or 'minor'
         L [ft] : Length of pipe - used in major loss calculation
         ϵD [ul] : Relative roughness - used in major loss calculation
+        K [ul] : Loss Coefficient, typically K=c*ft
         Δz [ft] : elevation change, z_out-z_in
         TODO K - Minor loss coefficient here as well somehow?'''
         
@@ -38,8 +40,12 @@ class FluidFlow():
         self.num_nodes = 2 # number of nodes, ∴ number of eqs
         self.nodes = (inlet_node, outlet_node)
 
+        assert loss in ["major", "minor"], "loss-type must be 'major' or 'minor'"
+        self.loss = loss
+
         self.L = L # [ft] : length
         self.ϵD = ϵD # [ul] : relative roughness
+        self.K = K # [ul] : loss coefficient, tpically K=ft*C
         self.Δz = Δz # [ft] : elevation change
 
         self.compute = self.compute_flow # alias redirect for the compute call
@@ -66,10 +72,16 @@ class FluidFlow():
         μ = fluid["μ"]
         γ = ρ*g
         
-        # calculating the friction factor
         Dh = self.Do_in - self.Di_in # hydraulic diameter - calculated at the inlet side
-        Re = 4*ṁ1/(π*μ*Dh) # TODO Re is based on hydraulic diameter here
-        f = iterative_solve_colebrook(self.ϵD, Re)
+
+        # calculating the head loss
+        if self.loss == "major":
+            # calculating the friction factor
+            Re = 4*ṁ1/(π*μ*Dh) # TODO Re and ϵD is based on hydraulic diameter here
+            f = iterative_solve_colebrook(self.ϵD, Re)
+            loss_coef = f*self.L/Dh
+        elif self.loss == "minor":
+            loss_coef = self.K
 
         # coefficient terms
         A_in = 16/(ρ*π**2*(self.Do_in**2 - self.Di_in**2)**2)
@@ -77,19 +89,18 @@ class FluidFlow():
 
         # form coefficient matrix
         M = np.array([
-            [1,   -1,     A_in*ṁ1,    -(f*self.L/Dh + 1)*A_out*ṁ2], # Cons-of-Energy
+            [1,   -1,     A_in*ṁ1,    -(loss_coef +1)*A_out*ṁ2], # Cons-of-Energy
             [0, 0, 1, -1]])          # Cons-of-Mass
         b = np.array([
-            [γ*self.Δz + A_in/2*ṁ1**2 -(f*self.L/Dh +1)*A_out/2*ṁ2**2], # COE
+            [γ*self.Δz + A_in/2*ṁ1**2 -(loss_coef +1)*A_out/2*ṁ2**2], # COE
             [0]])   # COM
 
         # expand the columns according to what nodes the pipe has
         M = matrix_expander(M, (2,N*2), (0,1), (self.inlet_node, self.outlet_node, N+self.inlet_node, N+self.outlet_node))
         return M,b
 
-
 class Pipe(FluidFlow):
-    '''Defines and solves fluid flow in a pipe object'''
+    '''Defines and solves flow in a pipe object, containing dimensions and nodal connections'''
 
     def __init__(self, L, D, inlet_node, outlet_node, ϵD, Δz):
         '''initialize an instance of Pipe()
@@ -101,9 +112,9 @@ class Pipe(FluidFlow):
         Δz [ft] : Elevation change, z_out-z_in'''
 
         # in a pipe, outer diameter is constant, annular inner diameter is zero
-        super().__init__(0, D, 0, D, inlet_node, outlet_node, L, ϵD, Δz)
+        super().__init__(0, D, 0, D, inlet_node, outlet_node, "major", L, ϵD, 0, Δz)
         
-class Minor():
+class Minor(FluidFlow):
     '''Defines a minor-loss object, (ex elbow, nozzle, ect...), containing dimensions and nodal connections'''
 
     def __init__(self, Di, Do, inlet_node, outlet_node, K):
@@ -114,50 +125,7 @@ class Minor():
         outlet_node [index] : location node of outlet
         K [ul] : Loss Coefficient, typically K=c*ft'''
 
-        self.Di = Di # [ft] : Inlet Diameter
-        self.Do = Do # [ft] : Outlet Diameter
-        self.inlet_node = inlet_node # [index] : location node of inlet
-        self.outlet_node = outlet_node # [index] : location node of outlet
-        self.K = K # [ul] : Loss Coefficient, typically K=c*ft
-
-        self.num_nodes = 2 # number of nodes, ∴ number of eqs
-        self.nodes = (inlet_node, outlet_node)
-
-        self.compute = self.compute_minor # redirect alias for compute -> compute_minor
-
-    def compute_minor(self, p_n, fluid, N):
-        '''Returns the linear algebra matricies to solve for the next iteration in a minor-loss component
-
-        p_n : solution column vector [p0, p1, p2, ..., ṁ0, ṁ1, ṁ2, ...], at current iteration n, for each node index
-        fluid : Dict of fluid properties {ρ:val, μ:val}
-        N : total number of nodes, indicates 1/2 number of eqs ie size of matrix
-
-        returns (M,b) to be appended to a full 2Nx2N matrix s.t. M*p_n+1 = b
-        '''
-        # translate inputs to easier-to-read form
-        p_n = np.array(p_n).flatten() # flatten column vector into single list
-
-        # p1 = p_n[self.inlet_node] # pressure terms unused
-        # p2 = p_n[self.outlet_node]
-        ṁ1 = p_n[self.inlet_node + N]
-        ṁ2 = p_n[self.outlet_node + N]
-
-        ρ = fluid["ρ"]
-
-        # form coefficient matrix
-        M = np.array([
-            [1, -1, 16*ṁ1/(ρ*π**2*self.Di**4), -16*(1+self.K)*ṁ2/(ρ*π**2*self.Do**4)], # Cons-of-Energy
-            [0, 0, 1, -1]          # Cons-of-Mass
-        ])
-
-        b = np.array([
-            [8*ṁ1**2/(ρ*π**2*self.Di**4) - 8*(1+self.K)*ṁ2**2/(ρ*π**2*self.Do**4)], # COE
-            [0]   # COM
-        ])
-
-        # expand the columns according to what nodes the pipe has
-        M = matrix_expander(M, (2,N*2), (0,1), (self.inlet_node, self.outlet_node, N+self.inlet_node, N+self.outlet_node))
-        return M,b
+        super().__init__(0, Di, 0, Do, inlet_node, outlet_node, "minor", 0, 0, K, 0)
 
 class Tee():
     '''Defines a tee object, containing dimensions and nodal connections'''

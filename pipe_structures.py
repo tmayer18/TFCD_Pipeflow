@@ -11,31 +11,40 @@ from colebrook_friction_factor import fully_turbulent_f, iterative_solve_colebro
 
 # Module contains classes for encapsulating data around various pipe-flow components
 
-class Pipe():
-    '''Defines a pipe object, containing dimensions and nodal connections'''
+class FluidFlow():
+    '''Parent class for pipes/elbows/annulus ect...
+    Contains momentum and mass conservation equations solving for pressure and massflow'''
 
-    def __init__(self, L, D, inlet_node, outlet_node, ϵD, Δz):
-        '''initialize an instance of Pipe
-        L [ft] : Length of Pipe
-        D [ft] : Diameter of Pipe
-        inlet_node [index] : location node of pipe inlet
-        outlet_node [index] : location node of pipe outlet
-        ϵD [ul] : Relative Rouchness, ϵ/D
-        Δz [ft] : Elevation change, z_out-z_in'''
+    def __init__(self, Di_in, Do_in, Di_out, Do_out, inlet_node, outlet_node, L, ϵD, Δz):
+        '''initialize an instance of FlowFlow
+        Di_in [ft] : Inlet annulus inner diameter
+        Do_in [ft] : Inlet annulus outer diameter
+        Di_out [ft] : Outlet annulus inner diameter
+        Do_out [ft] : Outlet annulus outer diameter
+        inlet_node [idx] : location node of the inlet
+        outlet_noew [idx] : location node of the outlet
+        L [ft] : Length of pipe - used in major loss calculation
+        ϵD [ul] : Relative roughness - used in major loss calculation
+        Δz [ft] : elevation change, z_out-z_in
+        TODO K - Minor loss coefficient here as well somehow?'''
+        
+        self.Di_in = Di_in # [ft] : diameter
+        self.Do_in = Do_in # [ft]
+        self.Di_out = Di_out # [ft]
+        self.Do_out = Do_out # [ft]
 
-        self.L = L # [ft] : Length of pipe
-        self.D = D # [ft] : Diameter of pipe
-        self.inlet_node = inlet_node # [index] : location node of pipe inlet
-        self.outlet_node = outlet_node # [index] : location node of pipe outlet
-        self.ϵD  = ϵD # [ul] : Relative Roughness, ϵ/D
-        self.Δz = Δz # [ft] : Elevation change, z_out-z_in.
-
+        self.inlet_node = inlet_node # [index]
+        self.outlet_node = outlet_node # [index]
         self.num_nodes = 2 # number of nodes, ∴ number of eqs
         self.nodes = (inlet_node, outlet_node)
 
-        self.compute = self.compute_pipe # redirect compute call to compute_pipe, as an alias
+        self.L = L # [ft] : length
+        self.ϵD = ϵD # [ul] : relative roughness
+        self.Δz = Δz # [ft] : elevation change
 
-    def compute_pipe(self, p_n, fluid, N):
+        self.compute = self.compute_flow # alias redirect for the compute call
+
+    def compute_flow(self, p_n, fluid, N):
         '''Returns the linear algebra matricies to solve for the next iteration in a pipe
 
         p_n : solution column vector [p0, p1, p2, ..., ṁ0, ṁ1, ṁ2, ...], at current iteration n, for each node index
@@ -44,33 +53,56 @@ class Pipe():
 
         returns (M,b) to be appended to a full 2Nx2N matrix s.t. M*p_n+1 = b
         '''
-        # translate inputs to easier-to-read form
+        # translate inputs to easier-to-reference form
         p_n = np.array(p_n).flatten() # flatten column vector into single list
 
-        # p1 = p_n[self.inlet_node] # pressure terms unused
-        # p2 = p_n[self.outlet_node]
+        p1 = p_n[self.inlet_node]
+        p2 = p_n[self.outlet_node]
         ṁ1 = p_n[self.inlet_node + N]
         ṁ2 = p_n[self.outlet_node + N]
 
+        # fluid properties extracted from the dict
         ρ = fluid["ρ"]
         μ = fluid["μ"]
         γ = ρ*g
         
-        Re = 4*ṁ1/(π*μ*self.D)
+        # calculating the friction factor
+        Dh = self.Do_in - self.Di_in # hydraulic diameter - calculated at the inlet side
+        Re = 4*ṁ1/(π*μ*Dh) # TODO Re is based on hydraulic diameter here
         f = iterative_solve_colebrook(self.ϵD, Re)
-        COE_coef = 16/(ρ*π**2*self.D**4)
+
+        # coefficient terms
+        A_in = 16/(ρ*π**2*(self.Do_in**2 - self.Di_in**2)**2)
+        A_out = 16/(ρ*π**2*(self.Do_out**2 - self.Di_out**2)**2)
 
         # form coefficient matrix
-        M = np.array([[1, -1, COE_coef*ṁ1, -(f*self.L/self.D + 1)*COE_coef*ṁ2], # Cons-of-Energy
-                    [0, 0, 1, -1]])          # Cons-of-Mass
-        b = np.array([[γ*self.Δz + COE_coef/2*ṁ1**2 -(f*self.L/self.D +1)*COE_coef/2*ṁ2**2], # COE
-                    [0]])   # COM
+        M = np.array([
+            [1,   -1,     A_in*ṁ1,    -(f*self.L/Dh + 1)*A_out*ṁ2], # Cons-of-Energy
+            [0, 0, 1, -1]])          # Cons-of-Mass
+        b = np.array([
+            [γ*self.Δz + A_in/2*ṁ1**2 -(f*self.L/Dh +1)*A_out/2*ṁ2**2], # COE
+            [0]])   # COM
 
         # expand the columns according to what nodes the pipe has
         M = matrix_expander(M, (2,N*2), (0,1), (self.inlet_node, self.outlet_node, N+self.inlet_node, N+self.outlet_node))
         return M,b
 
 
+class Pipe(FluidFlow):
+    '''Defines and solves fluid flow in a pipe object'''
+
+    def __init__(self, L, D, inlet_node, outlet_node, ϵD, Δz):
+        '''initialize an instance of Pipe()
+        L [ft] : Length of Pipe
+        D [ft] : Diameter of Pipe
+        inlet_node [index] : location node of pipe inlet
+        outlet_node [index] : location node of pipe outlet
+        ϵD [ul] : Relative Rouchness, ϵ/D
+        Δz [ft] : Elevation change, z_out-z_in'''
+
+        # in a pipe, outer diameter is constant, annular inner diameter is zero
+        super().__init__(0, D, 0, D, inlet_node, outlet_node, L, ϵD, Δz)
+        
 class Minor():
     '''Defines a minor-loss object, (ex elbow, nozzle, ect...), containing dimensions and nodal connections'''
 

@@ -108,17 +108,32 @@ class Pipe(FluidFlow):
         D [ft] : Diameter of Pipe
         inlet_node [index] : location node of pipe inlet
         outlet_node [index] : location node of pipe outlet
-        ϵD [ul] : Relative Rouchness, ϵ/D
+        ϵD [ul] : Relative Roughness, ϵ/D
         Δz [ft] : Elevation change, z_out-z_in'''
 
         # in a pipe, outer diameter is constant, annular inner diameter is zero
         super().__init__(0, D, 0, D, inlet_node, outlet_node, "major", L, ϵD, 0, Δz)
         
+class Annulus(FluidFlow):
+    '''Defines and solves flow in an annular pipe pbject, containing dimensions and nodal connections'''
+
+    def __init__(self, L, Di, Do, inlet_node, outlet_node, ϵD, Δz):
+        '''initialize an instance of Annulus()
+        L [ft] : Length of annular pipe
+        Di [ft] : Inner diameter of annulus
+        Do [ft] : Outer diameter of annulus
+        inlet_node [index] : location node of the annulus output
+        outlet_node [index] : location node of annular output
+        ϵD [ul] : Relative Roughness, ϵ/D
+        Δz [ft] : Elevation change, z_out-z_in'''
+
+        super().__init__(Di, Do, Di, Do, inlet_node, outlet_node, "major", L, ϵD, 0, Δz)
+
 class Minor(FluidFlow):
     '''Defines a minor-loss object, (ex elbow, nozzle, ect...), containing dimensions and nodal connections'''
 
     def __init__(self, Di, Do, inlet_node, outlet_node, K):
-        '''initialize an instance of Minor
+        '''initialize an instance of Minor()
         Di [ft] : Inlet Diameter
         Do [ft] : Outlet Diameter
         inlet_node [index] : location node of inlet
@@ -180,7 +195,7 @@ class Tee():
         self.num_nodes = 3 # number of nodes, ∴ number of eqs
         self.nodes = self.inlet_nodes+self.outlet_nodes
 
-        self.compute = self.compute_tee # redirect alias for compute -> compute_minor
+        self.compute = self.compute_tee # redirect alias for compute -> compute_tee
 
     def compute_tee(self, p_n, fluid, N):
         '''Returns the linear algebra matricies to solve for the next iteration in a minor-loss component

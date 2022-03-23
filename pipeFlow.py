@@ -7,10 +7,15 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
+import logging
 import pipe_structures as pipes
 import boundary_conditions as bc
 import pump_curves as pumps
+from iterative_solver import iterative_compute
 from colebrook_friction_factor import fully_turbulent_f
+
+logging.basicConfig(level=logging.DEBUG)
+logging.getLogger("matplotlib").setLevel(logging.WARNING) # matplotlib generates lots of debug logs
 
 # %% Inputs
 NUM_STATES = 2 # number of states per node to solve for
@@ -52,58 +57,10 @@ pipe_network = (
     bc.BoundaryCondition(10,0,"pressure")
 )
 
-max_iterations = 40 # maximum allowable iterations
-desired_tolerance = 1e-8 # desired tolerance in solution. When to cease iteration
-
-# %% Pre-printing information
-# print some stuff about number of piping elements, and size of M matrix
-N = 0 # number of nodes
-nodes = []
-last_node = -1
-pipe_likes = 0
-for elem in pipe_network:
-    N += elem.num_nodes
-    last_node = max((last_node,)+elem.nodes)
-    if type(elem) in [pipes.Minor, pipes.Pipe, pipes.Tee]:
-        pipe_likes += 1 # count the number of pipe-likes in the network
-
-N = int(N/2) # Each node in the network shows up exactly twice in the network, at the start and end of its pipe-like, or as a boundary condition
-assert last_node+1 == N, "There aren't enough equations!"
-print(f"There are {pipe_likes} pipe-likes in the network, requiring a {N*2}x{N*2} matrix to solve\n")
-
-
-# %% Iterate on the equations
-p_n = 10*np.ones((N*NUM_STATES,1)) # init column solution vector
-
-err = 10e2 # init error value
-i = 0 # iteration counter
-
-while abs(err) > desired_tolerance and i <= max_iterations:
-    A = np.empty((0, N*NUM_STATES)) # init empty matrix
-    b = np.empty((0,1))
-    
-    for elem in pipe_network:
-        Ai, bi = elem.compute(p_n, air, N)
-        A = np.append(A, Ai, axis=0) # append matrix-linearized equations to the matrix
-        b = np.append(b, bi, axis=0)
-    
-    # print(f"CHECK: the length of the matrix is {len(A)}x{len(A[0])}")
-
-    p_n1 = np.linalg.solve(A,b) # solve linear equation Ax=b
-
-    err = max(abs( (p_n-p_n1)/(p_n+1e-16) )) # largest percent change in any solution value
-
-    # print(f"Solution Vector at iteration {i}: {p_n1}")
-    # print(f"Error at iteration {i}: {err}")
-
-    i+=1
-    p_n = p_n1.copy() # p_n = p_n+1
-    # copy is necessary cause pointers. Otherwise they will be the same object
+# %% Iterate on the solution
+p_n, N = iterative_compute(pipe_network, air, 1e-8, 40, NUM_STATES)
 
 # %% Print the results
-if i >= max_iterations:
-    print("ERROR: The solution is not converged. Iterations terminated after iteration limit was reached")
-
 print(" SOLUTION ")
 print("Node     ṁ          Q         p           ρ          μ")
 print("      [slug/s]    [cfm]     [psig]    [slug/cf]  [lbf*s/ft^2]")

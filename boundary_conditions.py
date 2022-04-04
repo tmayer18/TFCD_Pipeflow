@@ -12,7 +12,7 @@ class BoundaryCondition():
 
     def __init__(self, node, value, bc_type):
         self.node = node # [index] : location node this boundary condition applies to
-        self.value = value # [psf] : known value at this location TODO other units and BC types
+        self.value = value # [Pa] : known value at this location TODO other units and BC types
         self.bc_type = bc_type # [str] : the kind of bc this is
         assert bc_type in ["pressure", "mass_flowrate"], f"Boundary condition '{bc_type}' is not supported!"
 

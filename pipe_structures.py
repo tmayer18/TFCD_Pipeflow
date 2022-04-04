@@ -5,7 +5,7 @@
 
 import numpy as np
 π = np.pi
-g = 32.174 # [ft/s^2] : Acceleration due to gravity
+g = 9.82 # [m/s^2] : Acceleration due to gravity
 
 from colebrook_friction_factor import fully_turbulent_f, iterative_solve_colebrook
 
@@ -17,22 +17,22 @@ class FluidFlow():
 
     def __init__(self, Di_in, Do_in, Di_out, Do_out, inlet_node, outlet_node, loss, L, ϵD, K, Δz):
         '''initialize an instance of FlowFlow
-        Di_in [ft] : Inlet annulus inner diameter
-        Do_in [ft] : Inlet annulus outer diameter
-        Di_out [ft] : Outlet annulus inner diameter
-        Do_out [ft] : Outlet annulus outer diameter
+        Di_in [m] : Inlet annulus inner diameter
+        Do_in [m] : Inlet annulus outer diameter
+        Di_out [m] : Outlet annulus inner diameter
+        Do_out [m] : Outlet annulus outer diameter
         inlet_node [idx] : location node of the inlet
         outlet_noew [idx] : location node of the outlet
         loss [str] : type of losses - 'major' or 'minor'
-        L [ft] : Length of pipe - used in major loss calculation
+        L [m] : Length of pipe - used in major loss calculation
         ϵD [ul] : Relative roughness - used in major loss calculation
         K [ul] : Loss Coefficient, typically K=c*ft
-        Δz [ft] : elevation change, z_out-z_in'''
+        Δz [m] : elevation change, z_out-z_in'''
         
-        self.Di_in = Di_in # [ft] : diameter
-        self.Do_in = Do_in # [ft]
-        self.Di_out = Di_out # [ft]
-        self.Do_out = Do_out # [ft]
+        self.Di_in = Di_in # [m] : diameter
+        self.Do_in = Do_in # [m]
+        self.Di_out = Di_out # [m]
+        self.Do_out = Do_out # [m]
 
         self.inlet_node = inlet_node # [index]
         self.outlet_node = outlet_node # [index]
@@ -42,10 +42,10 @@ class FluidFlow():
         assert loss in ["major", "minor"], "loss-type must be 'major' or 'minor'"
         self.loss = loss
 
-        self.L = L # [ft] : length
+        self.L = L # [m] : length
         self.ϵD = ϵD # [ul] : relative roughness
         self.K = K # [ul] : loss coefficient, tpically K=ft*C
-        self.Δz = Δz # [ft] : elevation change
+        self.Δz = Δz # [m] : elevation change
 
         self.compute = self.compute_flow # alias redirect for the compute call
 
@@ -103,12 +103,12 @@ class Pipe(FluidFlow):
 
     def __init__(self, L, D, inlet_node, outlet_node, ϵD, Δz):
         '''initialize an instance of Pipe()
-        L [ft] : Length of Pipe
-        D [ft] : Diameter of Pipe
+        L [m] : Length of Pipe
+        D [m] : Diameter of Pipe
         inlet_node [index] : location node of pipe inlet
         outlet_node [index] : location node of pipe outlet
         ϵD [ul] : Relative Roughness, ϵ/D
-        Δz [ft] : Elevation change, z_out-z_in'''
+        Δz [m] : Elevation change, z_out-z_in'''
 
         # in a pipe, outer diameter is constant, annular inner diameter is zero
         super().__init__(0, D, 0, D, inlet_node, outlet_node, "major", L, ϵD, 0, Δz)
@@ -118,13 +118,13 @@ class Annulus(FluidFlow):
 
     def __init__(self, L, Di, Do, inlet_node, outlet_node, ϵD, Δz):
         '''initialize an instance of Annulus()
-        L [ft] : Length of annular pipe
-        Di [ft] : Inner diameter of annulus
-        Do [ft] : Outer diameter of annulus
+        L [m] : Length of annular pipe
+        Di [m] : Inner diameter of annulus
+        Do [m] : Outer diameter of annulus
         inlet_node [index] : location node of the annulus output
         outlet_node [index] : location node of annular output
         ϵD [ul] : Relative Roughness, ϵ/D
-        Δz [ft] : Elevation change, z_out-z_in'''
+        Δz [m] : Elevation change, z_out-z_in'''
 
         super().__init__(Di, Do, Di, Do, inlet_node, outlet_node, "major", L, ϵD, 0, Δz)
 
@@ -133,8 +133,8 @@ class Minor(FluidFlow):
 
     def __init__(self, Di, Do, inlet_node, outlet_node, K):
         '''initialize an instance of Minor()
-        Di [ft] : Inlet Diameter
-        Do [ft] : Outlet Diameter
+        Di [m] : Inlet Diameter
+        Do [m] : Outlet Diameter
         inlet_node [index] : location node of inlet
         outlet_node [index] : location node of outlet
         K [ul] : Loss Coefficient, typically K=c*ft'''
@@ -146,7 +146,7 @@ class Tee():
 
     def __init__(self, D, inlet_nodes, outlet_nodes, run_nodes, ϵD, C_run=20, C_branch=60):
         '''initialize an instance of Tee
-        D [ft] : Tee Diameter (only constant diameter tees supported)
+        D [m] : Tee Diameter (only constant diameter tees supported)
         inlet_nodes (idx, idx) : Up to 2 inlet node locations
         outlet_nodes (idx, idx) : Up to 2 outlet node locations
         run_nodes (idx, idx) : Which 2 nodes form the run of the tee

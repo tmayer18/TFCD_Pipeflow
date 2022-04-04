@@ -6,7 +6,7 @@
 import scipy.interpolate as intp
 import numpy as np
 import matplotlib.pyplot as plt
-g = 32.174 # [ft/s^2] : Acceleration due to gravity
+g = 9.81 # [m/s^2] : Acceleration due to gravity
 from pipe_structures import matrix_expander
 
 
@@ -49,16 +49,16 @@ class PumpCurve():
         fluid : dict of fluid properties for the curve {'ρ':#, 'μ':#}
         units : Which units inputs are in. 
             "QH": Volumetric Flowrate [gpm] and Pressure Head [ft]
-            "mdp": Mass FLowrate [slug/s] and Pressure Rise [psf]
+            "mdp": Mass FLowrate [kg/s] and Pressure Rise [Pa]
         '''
         assert units in ["QH", "mdp"], "Invalid units specified"
         if units == "QH":
             ρ = fluid['ρ']
-            self.flowrate = curve_flowrate *0.133681*ρ/60 # [gpm]->[slug/s] : Mass FLowrate
+            self.flowrate = curve_flowrate *0.133681*ρ/60 # [gpm]->[slug/s] : Mass FLowrate # TODO Unit conversions
             self.head = curve_pressure_rise *ρ*g # [ft]->[psf] : Pressure rise across pump
         elif units == "mdp":
-            self.flowrate = curve_flowrate # [slug/s] : Mass Flowrate
-            self.head = curve_pressure_rise # [psf] : Pressure rise across pump
+            self.flowrate = curve_flowrate # [kg/s] : Mass Flowrate
+            self.head = curve_pressure_rise # [Pa] : Pressure rise across pump
 
         self.fluid = fluid
 

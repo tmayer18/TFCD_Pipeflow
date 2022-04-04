@@ -9,7 +9,7 @@ from pipe_structures import matrix_expander
 from pprint import pprint
 
 π = np.pi
-g = 32.174 # [ft/s^2]
+g = 9.81 # [m/s^2]
 
 # Provides a "wrapper" around the pipe_structures to additionally solve for heat transfer
 

@@ -27,8 +27,7 @@ class FluidFlow():
         L [ft] : Length of pipe - used in major loss calculation
         ϵD [ul] : Relative roughness - used in major loss calculation
         K [ul] : Loss Coefficient, typically K=c*ft
-        Δz [ft] : elevation change, z_out-z_in
-        TODO K - Minor loss coefficient here as well somehow?'''
+        Δz [ft] : elevation change, z_out-z_in'''
         
         self.Di_in = Di_in # [ft] : diameter
         self.Do_in = Do_in # [ft]

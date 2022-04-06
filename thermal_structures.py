@@ -119,6 +119,20 @@ def temp_matrix_assemble(pipe, ρ, Cp, ṁ1, ṁ2, T1, T2, Q, N):
 
 #     def __init__(self):
 #         self.resistance = 0 # [W/m^2]
+
+# ported from schuyler's getR() function
+def cylindrical_thermal_resistance(d_outer,d_inner,L,k):
+    '''returns the thermal conductive resistance through a cylindrical wall
+    d_outer [m] : diameter of outside of wall (larger dimension)
+    d_inner [m] : diameter of inside of wall (smaller dimension
+    L [m] : Length of of the pipes connected
+    k [W/m/K] : Thermal conductivity resistance of wall'''
+
+    r_outer = d_outer/2
+    r_inner = d_inner/2 # these two halves would cancel eachother out, but radius is "more correct"
+
+    r = np.log(r_inner/r_outer)/(2*π*L*k) #[K/W]
+    return r
     
 
 if __name__ == "__main__":

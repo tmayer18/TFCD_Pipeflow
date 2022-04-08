@@ -137,9 +137,15 @@ if __name__ == "__main__":
     print(a.deriv(1))
     my_pump = Pump(0,1,a)
     A,b = my_pump.compute(np.array([0.1,0.1,0.1,0.1]), None, 2)
-    print(A)
-    print(b)
+    print(f"{A=}")
+    print(f"{b=}")
+
+    # where do points off the curve end up
+    plt.plot(-1, a(-1), '.r')
+    plt.plot(4, a(4), '.r')
 
     print(a(np.linspace(0,5)))
     a.plot()
     plt.show()
+
+    

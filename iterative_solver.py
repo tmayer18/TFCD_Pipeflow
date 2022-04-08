@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 def iterative_compute(pipe_network, fluid, desired_tolerance, max_iterations, NUM_STATES):
     '''Iteratively solves for the state of a pipe-network
     pipe_network : List of pipe-structure objects
-    fluid : dict of fluid properties
+    fluid : string of fluid to lookup properties in coolprop
     desired_tolerance : consequetive change between iterations to stop iterating at
     max_iterations : cap of iterations to compute
     NUM_STATES : properties at each node to compute, ie pressure and massflow = 2'''

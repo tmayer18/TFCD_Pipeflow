@@ -3,11 +3,13 @@
 # Timothy Mayer
 # 1/31/2022
 
+from statistics import mean
 import numpy as np
 π = np.pi
 g = 9.82 # [m/s^2] : Acceleration due to gravity
 
 from colebrook_friction_factor import fully_turbulent_f, iterative_solve_colebrook
+from CoolProp.CoolProp import PropsSI
 
 # Module contains classes for encapsulating data around various pipe-flow components
 
@@ -53,7 +55,7 @@ class FluidFlow():
         '''Returns the linear algebra matricies to solve for the next iteration in a pipe
 
         p_n : solution column vector [p0, p1, p2, ..., ṁ0, ṁ1, ṁ2, ...], at current iteration n, for each node index
-        fluid : Dict of fluid properties {ρ:val, μ:val}
+        fluid : string of fluid to lookup properties in coolprop 
         N : total number of nodes, indicates 1/2 number of eqs ie size of matrix
 
         returns (M,b) to be appended to a full 2Nx2N matrix s.t. M*p_n+1 = b
@@ -66,9 +68,11 @@ class FluidFlow():
         ṁ1 = p_n[self.inlet_node + N]
         ṁ2 = p_n[self.outlet_node + N]
 
-        # fluid properties extracted from the dict
-        ρ = fluid["ρ"]
-        μ = fluid["μ"]
+        p̄ = mean((p1, p2))
+
+        # fluid properties extracted from CoolProp
+        ρ = PropsSI("DMASS", "P", p̄, "T", fluid["T_ref"], fluid["name"])
+        μ = PropsSI("VISCOSITY", "P", p̄, "T", fluid["T_ref"], fluid["name"])
         γ = ρ*g
         
         Dh = self.Do_in - self.Di_in # hydraulic diameter - calculated at the inlet side
@@ -208,10 +212,10 @@ class Tee():
         # translate inputs to easier-to-read form
         p_n = np.array(p_n).flatten() # flatten column vector into single list
 
-        # p_in1 = p_n[self.inlet_nodes[0]] # pressure terms unused
-        # p_in2 = p_n[self.inlet_nodes[-1]]
-        # p_out1 = p_n[self.outlet_nodes[0]]
-        # p_out2 = p_n[self.outlet_nodes[-1]]
+        p_in1 = p_n[self.inlet_nodes[0]]
+        p_in2 = p_n[self.inlet_nodes[-1]]
+        p_out1 = p_n[self.outlet_nodes[0]]
+        p_out2 = p_n[self.outlet_nodes[-1]]
         ṁ_in1 = p_n[self.inlet_nodes[0] + N]
         ṁ_in2 = p_n[self.inlet_nodes[-1] + N]
         ṁ_out1 = p_n[self.outlet_nodes[0] + N]
@@ -221,7 +225,10 @@ class Tee():
         ṁ_in = ṁ_in1 # ease of access alias
         ṁ_out = ṁ_out1
 
-        ρ = fluid["ρ"]
+        # fluid properties extracted from CoolProp
+        p̄ = mean((p_in1, p_in2, p_out1, p_out2))
+        ρ = PropsSI("DMASS", "P", p̄, "T", fluid["T_ref"], fluid["name"])
+
         K1 = self.K1 # ease of access
         K2 = self.K2
 

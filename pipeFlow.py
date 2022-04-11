@@ -44,8 +44,18 @@ vad_fan_flowrate *= air["ρ"]/60 * (0.3048)**3 # [cfm] -> [m^3/s] -> [kg/s]
 
 VAD48H21 = pumps.PumpCurve(vad_fan_flowrate, vad_fan_head, fluid=air, units='mdp')
 
-# TODO unit conversions built into this using one of the packages researched
-# units - looks pretty good
+# NOTE research into the most recommended unit conversion libraries
+# units - convoluted syntax, straightforward usage. 2 [m] -> unit('m')(2) 
+            # works in numpy fine, but unitless operations like log or sin fail
+            # I also don't like the syntax, it feels bulky
+# pint - the most popular option by far. Easier to use inline. 2 [m] -> 2*ureg.m
+            # this has proper support for unitless operations (log, sin ect..)
+            # defualt formatting for printing is ugly (2 meter), but can be changed
+# unum - a pint alternative. Even easier inline support 2 [m] -> 2*m or 2*u.m
+            # more memory efficient integration with numpy arrays, 
+            # but fails on lots of common operations (log, sin...)
+
+
 p_ref = 14.7*144*47.88 # [psf] -> [Pa]
 pipe_network = (
     bc.BoundaryCondition(0,0+p_ref,"pressure"), # reference 0 point, after fan

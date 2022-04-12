@@ -18,6 +18,7 @@
 
 from unum import Unum
 import unum.units as u
+import numpy as np
 
 class Unum2(Unum):
     '''Our modified version of Unum, implementing required
@@ -52,14 +53,47 @@ class Unum2(Unum):
                 parent_unit = Unum2(Unum2.getUnitTable()[unit_key][0]._unit)**unit_pow
                 target_unit *= parent_unit.as_base_unit() # if rec_expand is a base unit, recursive call will return target_unit=self
         
-        target_unit._value = 1 # overwrite conversion factor, as_unit will handle the conversion factors
-        return self.as_unit(target_unit)
+        if isinstance(target_unit, Unum): # if this isn't a unitless quantity
+            target_unit._value = 1 # overwrite conversion factor, as_unit will handle the conversion factors
+        return self.asUnit(target_unit)
+
+    @staticmethod
+    @np.vectorize # decorator that make this a per-element numpy operation
+    def arr_as_base_unit(num): # since we can't register a method call nparr.as_base_unit to the numpy array, we write a static method arr_as_base_unit(arr)
+        if isinstance(num, Unum):
+            return num.as_base_unit()
+        return num
+
+    @staticmethod
+    @np.vectorize # decorator that make this a per-element numpy operation
+    def strip_units(num): 
+        if isinstance(num, Unum):
+            return num.asNumber(), Unum2(num._unit)
+        return num, 1
+
+    @staticmethod
+    @np.vectorize
+    def arr_normalize(num):
+        if isinstance(num, Unum):
+            return num.normalize()
+        return num
+
+    @staticmethod
+    def unit_aware_inv(A):
+        '''performs linear-algebra matrix inversion, with unit-aware operations'''
+        A = Unum2.arr_as_base_unit(A) # drop to consistent base-units
+        A_vals, A_units = Unum2.strip_units(A)
+
+        Ainv_vals = np.linalg.inv(A_vals)
+        Ainv_units = np.reciprocal(A_units).T # when all the units are consistent, the inverse matrix's units are the Transpose of each units recripocal
+
+        return Ainv_vals * Ainv_units
 
     # now we wrap the methods of Unum1 that explicitly return a Unum1 object to now return Unum2 objects
-    _upgrade_methods = ['__add__', '__sub__', '__mul__', '__div__',
+    _upgrade_methods = ['__add__', '__sub__', '__mul__', '__div__', '__truediv__',
         '__floordiv__', '__pow__', '__abs__', '__radd__', '__rsub__', '__rmul__',
-        '__rdiv__', '__rfloordiv__', '__rpow__', '__getitem__', '__setitem__',
-        '__pos__', '__neg__']
+        '__rdiv__', '__rfloordiv__', '__rtruediv__', '__rpow__', '__getitem__', '__setitem__',
+        '__pos__', '__neg__', '__mod__']
     for method_str in _upgrade_methods:
         def wrapped_method(self, *args, method_str=method_str):
             ret_obj = getattr(super(), method_str)(*args)
@@ -68,10 +102,6 @@ class Unum2(Unum):
 
     def __repr__(self):
         return f"<Unum2 object({self._value}, {self._unit})>"
-
-    # replace Unum camelCase with snake_case
-    as_number = Unum.asNumber
-    as_unit = Unum.asUnit
 
 class units2():
     '''upconvert all predefined Unum1 units to Unum2, but as a class instead of the
@@ -93,6 +123,9 @@ class units2():
             # print(f"{symbol}", end=', ') # print out full list of units for above line
             vars()[symbol] = Unum2.unit(symbol, conv, name)
 
+    # define new units that the source library does not have
+    ul = Unum2({}) # unitless quantity
+
 
 if __name__ == "__main__":
     print("\n====Main====\n")
@@ -101,26 +134,48 @@ if __name__ == "__main__":
         return f"<Unum object({obj._value}, {obj._unit})>"
     Unum.__repr__ = repr_override
 
+    def list_str(value): # recursive str caller
+        if not isinstance(value, (list, tuple, np.ndarray)): return str(value)
+        return [list_str(v) for v in value]
+
+    def lprint(thing):
+        #prints thing but with nested __str__ calls rather than __repr__ for pretty printing
+        print([list_str(item) for item in thing])
+
+
     Teic = Unum2.unit('tei', 0, 'teichert')
-    lTeic = Unum2.unit('ltei', 1e-3*Teic, 'lil teichert')
-    hlTeic = Unum2.unit('hltei', 0.5*lTeic, 'half lil teichert')
-    hhlTeic = Unum2.unit('hhlTeic', 300*hlTeic, 'hip half lil teichert')
-    Can = Unum2.unit('can', 0, "canino")
-    gen = Unum2.unit('gen', 0.5*lTeic*1.2*Can, 'genius')
+    # lTeic = Unum2.unit('ltei', 1e-3*Teic, 'lil teichert')
+    # hlTeic = Unum2.unit('hltei', 0.5*lTeic, 'half lil teichert')
+    # hhlTeic = Unum2.unit('hhlTeic', 300*hlTeic, 'hip half lil teichert')
+    # Can = Unum2.unit('can', 0, "canino")
+    # gen = Unum2.unit('gen', 0.5*lTeic*1.2*Can, 'genius')
 
-    print(u)
-    print(units2)
-    print(units2.celsius)
-    
-    a = hhlTeic * Can * units2.mm
-    b = units2.N
-    c = -b
-    d = +c
-    e = a*b
-    print(a)
-    print(b.as_base_unit())
-    print(c, d, e)
+    u = units2
 
+    a = np.array([[2,3],[4,5]])
+    a1 = np.array([[u.m, u.m**2/(u.s**2)],[u.s**2/u.m, u.ul]])
+    A = a*a1
+    print(A)
+    print(Unum2.unit_aware_inv(A))
+    print(Unum2.unit_aware_inv(a))
+
+    A = np.array([
+        [2*u.m**2/(u.s**2),     2*u.N,      3*u.N*u.m/u.s,      4*u.m],
+        [5/(u.s**2*u.m),        6*u.N/(u.m**3), 7*u.kg/(u.s**3*u.m), 8/(u.m**2)],
+        [9*u.m/(u.kg*u.s**2),   10/(u.s**2),    12*u.m/(u.s**3),    11/u.kg],
+        [13/(u.kg*u.s),     14/(u.m*u.s),   15/(u.s**2),    16/(u.N*u.s)]
+    ])
+    b = np.array([[1*u.N*u.m,    2*u.N/(u.m**2),     3*u.m/(u.s**2),  4/u.s]]).T
+
+    print(A)
+    print(b)
+    # Aul, _ = Unum2.strip_units(A)
+    # print(Aul)
+    # print(np.linalg.inv(Aul))
+    Ainv = Unum2.unit_aware_inv(A)
+    # print(Unum2.arr_normalize(Ainv)) # normalize won't get kgm/s2 -> N
+    x = Ainv@b
+    print(x)
     
     
 

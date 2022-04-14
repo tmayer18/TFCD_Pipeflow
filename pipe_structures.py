@@ -3,13 +3,13 @@
 # Timothy Mayer
 # 1/31/2022
 
-from statistics import mean
+from colebrook_friction_factor import fully_turbulent_f, iterative_solve_colebrook
+from unum_units import units2 as u
+from CoolProp.CoolProp import PropsSI
+
 import numpy as np
 π = np.pi
-g = 9.82 # [m/s^2] : Acceleration due to gravity
-
-from colebrook_friction_factor import fully_turbulent_f, iterative_solve_colebrook
-from CoolProp.CoolProp import PropsSI
+g = 9.81 *u.m/(u.s**2)# [m/s^2] : Acceleration due to gravity
 
 # Module contains classes for encapsulating data around various pipe-flow components
 
@@ -29,7 +29,8 @@ class FluidFlow():
         L [m] : Length of pipe - used in major loss calculation
         ϵD [ul] : Relative roughness - used in major loss calculation
         K [ul] : Loss Coefficient, typically K=c*ft
-        Δz [m] : elevation change, z_out-z_in'''
+        Δz [m] : elevation change, z_out-z_in
+        * Units listed may be ignored if a Unum unit-aware numbers is used'''
         
         self.Di_in = Di_in # [m] : diameter
         self.Do_in = Do_in # [m]
@@ -68,11 +69,11 @@ class FluidFlow():
         ṁ1 = p_n[self.inlet_node + N]
         ṁ2 = p_n[self.outlet_node + N]
 
-        p̄ = mean((p1, p2))
+        p̄ = (p1+p2)/2
 
         # fluid properties extracted from CoolProp
-        ρ = PropsSI("DMASS", "P", p̄, "T", fluid["T_ref"], fluid["name"])
-        μ = PropsSI("VISCOSITY", "P", p̄, "T", fluid["T_ref"], fluid["name"])
+        ρ = PropsSI("DMASS", "P", p̄.asNumber(u.Pa), "T", fluid["T_ref"].asNumber(u.K), fluid["name"]) * u.kg/(u.m**3) # [kg/m^3] : fluid density
+        μ = PropsSI("VISCOSITY", "P", p̄.asNumber(u.Pa), "T", fluid["T_ref"].asNumber(u.K), fluid["name"]) * u.Pa*u.s # [Pa*s] : fluid viscosity
         γ = ρ*g
         
         Dh = self.Do_in - self.Di_in # hydraulic diameter - calculated at the inlet side
@@ -92,11 +93,11 @@ class FluidFlow():
 
         # form coefficient matrix
         M = np.array([
-            [1,   -1,     A_in*ṁ1,    -(loss_coef +1)*A_out*ṁ2], # Cons-of-Energy
-            [0, 0, 1, -1]])          # Cons-of-Mass
+            [1,              -1,      A_in*ṁ1,  -(loss_coef +1)*A_out*ṁ2],  # Cons-of-Energy
+            [0*u.m*u.s,   0*u.m*u.s,     1,                  -1         ]]) # Cons-of-Mass
         b = np.array([
             [γ*self.Δz + A_in/2*ṁ1**2 -(loss_coef +1)*A_out/2*ṁ2**2], # COE
-            [0]])   # COM
+            [0*u.kg/u.s]])   # COM
 
         # expand the columns according to what nodes the pipe has
         M = matrix_expander(M, (2,N*2), (0,1), (self.inlet_node, self.outlet_node, N+self.inlet_node, N+self.outlet_node))
@@ -112,10 +113,11 @@ class Pipe(FluidFlow):
         inlet_node [index] : location node of pipe inlet
         outlet_node [index] : location node of pipe outlet
         ϵD [ul] : Relative Roughness, ϵ/D
-        Δz [m] : Elevation change, z_out-z_in'''
+        Δz [m] : Elevation change, z_out-z_in
+        * Units listed may be ignored if a Unum unit-aware numbers is used'''
 
         # in a pipe, outer diameter is constant, annular inner diameter is zero
-        super().__init__(0, D, 0, D, inlet_node, outlet_node, "major", L, ϵD, 0, Δz)
+        super().__init__(0*u.m, D, 0*u.m, D, inlet_node, outlet_node, "major", L, ϵD, 0, Δz)
         
 class Annulus(FluidFlow):
     '''Defines and solves flow in an annular pipe pbject, containing dimensions and nodal connections'''
@@ -128,7 +130,8 @@ class Annulus(FluidFlow):
         inlet_node [index] : location node of the annulus output
         outlet_node [index] : location node of annular output
         ϵD [ul] : Relative Roughness, ϵ/D
-        Δz [m] : Elevation change, z_out-z_in'''
+        Δz [m] : Elevation change, z_out-z_in
+        * Units listed may be ignored if a Unum unit-aware numbers is used'''
 
         super().__init__(Di, Do, Di, Do, inlet_node, outlet_node, "major", L, ϵD, 0, Δz)
 
@@ -141,9 +144,10 @@ class Minor(FluidFlow):
         Do [m] : Outlet Diameter
         inlet_node [index] : location node of inlet
         outlet_node [index] : location node of outlet
-        K [ul] : Loss Coefficient, typically K=c*ft'''
+        K [ul] : Loss Coefficient, typically K=c*ft
+        * Units listed may be ignored if a Unum unit-aware numbers is used'''
 
-        super().__init__(0, Di, 0, Do, inlet_node, outlet_node, "minor", 0, 0, K, 0)
+        super().__init__(0*u.m, Di, 0*u.m, Do, inlet_node, outlet_node, "minor", 0*u.m, 0, K, 0*u.m)
 
 class Tee():
     '''Defines a tee object, containing dimensions and nodal connections'''
@@ -156,7 +160,7 @@ class Tee():
         run_nodes (idx, idx) : Which 2 nodes form the run of the tee
         ϵD [ul] : Relative roughness'''
         
-        self.D = D # [ft] : Tee Diameter (only supports constant diameter tees)
+        self.D = D # [m] : Tee Diameter (only supports constant diameter tees)
         ft = fully_turbulent_f(ϵD)
         K_run = C_run*ft
         K_branch = C_branch*ft
@@ -226,8 +230,8 @@ class Tee():
         ṁ_out = ṁ_out1
 
         # fluid properties extracted from CoolProp
-        p̄ = mean((p_in1, p_in2, p_out1, p_out2))
-        ρ = PropsSI("DMASS", "P", p̄, "T", fluid["T_ref"], fluid["name"])
+        p̄ = sum((p_in1, p_in2, p_out1, p_out2))/4
+        ρ = PropsSI("DMASS", "P", p̄.asNumber(u.Pa), "T", fluid["T_ref"].asNumber(u.K), fluid["name"]) * u.kg/(u.m**3) # [kg/m^3] : fluid density
 
         K1 = self.K1 # ease of access
         K2 = self.K2
@@ -246,7 +250,7 @@ class Tee():
             b = np.array([
                 [C*(ṁ_in**2-(K1+1)*ṁ_out1**2)],
                 [C*(ṁ_in**2-(K2+1)*ṁ_out2**2)],
-                [0]
+                [0*u.kg*u.s]
             ])
 
         elif self.configuration == "dual_inlet":
@@ -259,7 +263,7 @@ class Tee():
             b = np.array([
                 [C*((1-K1)*ṁ_in1**2-ṁ_out**2)],
                 [C*((1-K2)*ṁ_in2**2-ṁ_out**2)],
-                [0]
+                [0*u.kg*u.s]
             ])
         else:
             raise Exception("Tee Object failure! Was neither dual_inlet nor dual_outlet")
@@ -301,19 +305,35 @@ def matrix_expander(A, NxM, row:tuple, col:tuple=(0,)):
 if __name__ == "__main__":
     # print(matrix_expander([[1,2],[3,4]], (4,3), (1,3), (1,2)))
 
-    # my_pipe = Pipe(6, 0.936/12, 1, 2, 2e-4/(0.936/12), 1)
-    # p_n = np.array([[2304, 2304, 2304, 2304, 0.1, 0.1, 0.1, 0.1]]).T
-    # A, b = my_pipe.compute(p_n, {"ρ":1.94, "μ":2.34e-5}, 4)
-    # print(A)
-    # print(b)
-    # p = np.linalg.solve(A, b) # solve Ax = b
-    # print(p)
+    from unum_units import Unum2
+    inch = Unum2.unit('inch', 2.54*u.cm, "inch")
+    feet = Unum2.unit('ft', 12*inch, "foot")
+    kgps = Unum2.unit('kgps', u.kg/u.s, "kilogram-per-second")
+    lbf = Unum2.unit('lb', 4.44822*u.N, "poundf")
+    slug = Unum2.unit('slug', 14.5939*u.kg, "slug")
+    psf = Unum2.unit('psf', lbf/(feet**2), "pound-per-square-foot")
+    psi = Unum2.unit('psi', lbf/(inch**2), "pound=per=square-inch")
 
-    # A, b = my_pipe.compute_pipe(p, {"ρ":1.94, "μ":2.34e-5}, (16*144, 14.7*144))
-    # print(A)
-    # print(b)
-    # p = np.linalg.solve(A, b) # solve Ax = b
-    # print(p)
+    # testcase - Single Pipe described in Homework 1
+    my_pipe = Pipe(6*feet, 0.936*inch, 0, 1, 2e-4*feet/(0.9368*inch), 1*feet)
+    water = {"ρ":1.94*slug/(feet**3), "μ":2.34e-5*lbf*u.s/(feet**2), "T_ref":300*u.K, "name":"water"}
+    test_p_n = np.array([[2304*psf, 2304*psf, 0.1*slug/u.s, 0.1*slug/u.s]]).T
+    test_A, test_b = my_pipe.compute(test_p_n, water, 2)
+    test_A = np.append(test_A, np.array([[1*u.ul,0,0,0]]), axis=0) # BC1
+    test_b = np.append(test_b, np.array([[16*psi]]), axis=0)
+    test_A = np.append(test_A, np.array([[0,1*u.ul,0,0]]), axis=0)  # BC2
+    test_b = np.append(test_b, np.array([[14.7*psi]]), axis=0)
+    print(test_A)
+    print(test_b)
+    print("========== PAD UNITS =========")
+    test_A = Unum2.apply_padded_units(test_A, test_b, test_p_n)
+    print(test_A)
+    print("================ INVERT ==============")
+    A_inv = Unum2.unit_aware_inv(test_A)
+    print(A_inv)
+    print("=============== START MATRIX MUL ================")
+    p = A_inv@test_b # solve Ax = b
+    p = Unum2.arr_as_unit(p, np.array([[psf, psf, slug/u.s, slug/u.s]]).T)
+    print(p)
 
-    # my_tee = Tee(6, (0,1), 2, (0,2), 1)
-    pass
+    # this solution matches the iteration-1 solution hand-solved for in our verification case from homework 1 🎉

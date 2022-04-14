@@ -71,6 +71,11 @@ class Unum2(Unum):
         return num
 
     @staticmethod
+    @np.vectorize
+    def arr_as_unit(num, other):
+        return Unum.coerceToUnum(num).asUnit(other)
+
+    @staticmethod
     @np.vectorize # decorator that make this a per-element numpy operation
     def strip_units(num): 
         if isinstance(num, Unum):
@@ -143,10 +148,9 @@ class Unum2(Unum):
     ignores_zero = ('__add__', '__sub__', '__radd__', '__rsub__') # to use identity matrices, adding zero should not change/set any units (0kg + 4m = 4m)
     for method_str in _upgrade_methods:
         def wrapped_method(self, *args, method_str=method_str, ignores_zero=ignores_zero):
-            # print(inspect.getouterframes(inspect.currentframe(), 2)[1][3])# == "unum_units":
             # if method_str in ['__add__', '__mul__']:
             #     print(f"unum math {method_str} : {self}, {args}")
-            if method_str in ignores_zero: # TODO is this even necessary with the units forcer?
+            if method_str in ignores_zero:
                 if Unum2.coerceToUnum(args[0]).asNumber() == 0:
                     args = (Unum2(self._unit, value=0),)+args[1:] # set incoming 0 to have matching units
                 if self.asNumber() == 0:
@@ -186,9 +190,9 @@ class units2():
 if __name__ == "__main__":
     print("\n====Main====\n")
 
-    # def repr_override(obj):
-    #     return f"<Unum object({obj._value}, {obj._unit})>"
-    # Unum.__repr__ = repr_override
+    def repr_override(obj):
+        return f"<Unum object({obj._value}, {obj._unit})>"
+    Unum.__repr__ = repr_override
 
     def list_str(value): # recursive str caller
         if not isinstance(value, (list, tuple, np.ndarray)): return str(value)
@@ -208,14 +212,14 @@ if __name__ == "__main__":
 
     u = units2
 
-    A = np.array([
+    test_A = np.array([
         [1*u.ul, -1*u.ul, 4.3e6/(u.m*u.s), -13e6/(u.m*u.s)],
         [0*u.m*u.s, 0*u.m*u.s, 1*u.ul, -1*u.ul],
         [1*u.ul, 0, 0, 0],
         [0, 0, 1*u.ul, 0]])
-    b = np.array([[-439000*u.kg/(u.m*u.s**2), 0*u.kg/u.s, 2304*u.Pa, 0.1*u.kg/u.s]]).T
-    x = np.array([[0.1*u.Pa, 0.1*u.Pa, 0.1*u.kg/u.s, 0.1*u.kg/u.s]]).T
-    print(Unum2.apply_padded_units(A,b,x))
+    test_b = np.array([[-439000*u.kg/(u.m*u.s**2), 0*u.kg/u.s, 2304*u.Pa, 0.1*u.kg/u.s]]).T
+    test_x = np.array([[0.1*u.Pa, 0.1*u.Pa, 0.1*u.kg/u.s, 0.1*u.kg/u.s]]).T
+    print(Unum2.apply_padded_units(test_A,test_b,test_x))
 
 
     # a = np.array([[2,3],[4,5]])

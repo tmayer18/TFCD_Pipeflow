@@ -16,9 +16,15 @@
 # do actual programming, nor should this really be used anywhere else. If you're looking for the same functionality, look into
 # making a proper forked version of the original Unum package and do actual module packaging stuff
 
-from unum import Unum
+from unum import Unum, IncompatibleUnitsError
 import unum.units as u
 import numpy as np
+
+class UnitError(TypeError):
+    '''An operation has a problem with units'''
+    # a reimplementation because none of the Unum exceptions let you pass an arbitrary string
+    def __init__(self, *args):
+        super().__init__(self, *args)
 
 class Unum2(Unum):
     '''Our modified version of Unum, implementing required
@@ -78,9 +84,49 @@ class Unum2(Unum):
             return num.normalize()
         return num
 
+    def check_match_units(self, other): # checks if two numbers have compatiable units
+        try:
+            self.matchUnits(Unum.coerceToUnum(other)) # if this succeeds, there is a conversion
+            return True
+        except IncompatibleUnitsError:
+            return False
+    
+    @staticmethod
+    @np.vectorize
+    def arr_check_unit_match(num, other_num):
+        if isinstance(num, Unum):
+            return num.check_match_units(other_num)
+        return True # unitless numbers all have the same, nonexistant units
+
+
+    @staticmethod
+    def apply_padded_units(A,b,x):
+        '''Takes the matrices of a matrix linear-equation set Ax=b, and injects missing units into coefficient matrix A
+        - assembling multiple matrices into one leaves '0' entries that won't know what unit they require to survive inversion,
+            this function replaces 0 scalars with <0 [some-unit]> Unum objects'''
+        A_val, A_units = Unum2.strip_units(A)
+        _, b_units = Unum2.strip_units(b)
+        _, x_units = Unum2.strip_units(x)
+
+        v_isinstance = np.vectorize(isinstance)
+
+        expected_units = b_units@np.reciprocal(x_units).T # expected units of A based on solution and constant vector
+        corrected_units = np.where(v_isinstance(A_units, Unum), A_units, expected_units) # where the original matrix had a non-Unum 1, inject the expected unit
+
+        # check if expected match unchanged units
+        check_units = np.where(v_isinstance(A_units, Unum), expected_units, A_units)
+        match_array = Unum2.arr_check_unit_match(check_units, A_units)
+        if not np.all(match_array): # a prexisting unit was incorrect
+            ii, jj = np.where(np.logical_not(match_array))
+            errored_elements = [(i,j) for i, j in zip(ii,jj)]
+            raise UnitError(f"apply_padded_units has discovered input units that will not produce the desired output units, in cells {errored_elements}")
+
+        return A_val*corrected_units
+
     @staticmethod
     def unit_aware_inv(A):
-        '''performs linear-algebra matrix inversion, with unit-aware operations'''
+        '''performs linear-algebra matrix inversion, with unit-aware operations
+         * all elements must have appropiate units, including zeros, as matrix-inversion operations may change zeros to numbers'''
         A = Unum2.arr_as_base_unit(A) # drop to consistent base-units
         A_vals, A_units = Unum2.strip_units(A)
 
@@ -90,18 +136,28 @@ class Unum2(Unum):
         return Ainv_vals * Ainv_units
 
     # now we wrap the methods of Unum1 that explicitly return a Unum1 object to now return Unum2 objects
-    _upgrade_methods = ['__add__', '__sub__', '__mul__', '__div__', '__truediv__',
+    _upgrade_methods = ('__add__', '__sub__', '__mul__', '__div__', '__truediv__',
         '__floordiv__', '__pow__', '__abs__', '__radd__', '__rsub__', '__rmul__',
         '__rdiv__', '__rfloordiv__', '__rtruediv__', '__rpow__', '__getitem__', '__setitem__',
-        '__pos__', '__neg__', '__mod__']
+        '__pos__', '__neg__', '__mod__')
+    ignores_zero = ('__add__', '__sub__', '__radd__', '__rsub__') # to use identity matrices, adding zero should not change/set any units (0kg + 4m = 4m)
     for method_str in _upgrade_methods:
-        def wrapped_method(self, *args, method_str=method_str):
-            ret_obj = getattr(super(), method_str)(*args)
-            return Unum2(ret_obj._unit, ret_obj._value)
-        vars()[method_str] = wrapped_method
+        def wrapped_method(self, *args, method_str=method_str, ignores_zero=ignores_zero):
+            # print(inspect.getouterframes(inspect.currentframe(), 2)[1][3])# == "unum_units":
+            # if method_str in ['__add__', '__mul__']:
+            #     print(f"unum math {method_str} : {self}, {args}")
+            if method_str in ignores_zero: # TODO is this even necessary with the units forcer?
+                if Unum2.coerceToUnum(args[0]).asNumber() == 0:
+                    args = (Unum2(self._unit, value=0),)+args[1:] # set incoming 0 to have matching units
+                if self.asNumber() == 0:
+                    self = Unum2(Unum.coerceToUnum(args[0])._unit, value=0) # set self to match units of incoming unum
 
-    def __repr__(self):
-        return f"<Unum2 object({self._value}, {self._unit})>"
+            ret_obj = getattr(super(), method_str)(*args) # get the __ method from the super class
+            return Unum2(ret_obj._unit, ret_obj._value) # recast as a Unum2
+        vars()[method_str] = wrapped_method # add to this classes attributes, dynamicaly by name
+
+    # def __repr__(self):
+    #     return f"<Unum2 object({self._value}, {self._unit})>"
 
 class units2():
     '''upconvert all predefined Unum1 units to Unum2, but as a class instead of the
@@ -130,9 +186,9 @@ class units2():
 if __name__ == "__main__":
     print("\n====Main====\n")
 
-    def repr_override(obj):
-        return f"<Unum object({obj._value}, {obj._unit})>"
-    Unum.__repr__ = repr_override
+    # def repr_override(obj):
+    #     return f"<Unum object({obj._value}, {obj._unit})>"
+    # Unum.__repr__ = repr_override
 
     def list_str(value): # recursive str caller
         if not isinstance(value, (list, tuple, np.ndarray)): return str(value)
@@ -152,30 +208,41 @@ if __name__ == "__main__":
 
     u = units2
 
-    a = np.array([[2,3],[4,5]])
-    a1 = np.array([[u.m, u.m**2/(u.s**2)],[u.s**2/u.m, u.ul]])
-    A = a*a1
-    print(A)
-    print(Unum2.unit_aware_inv(A))
-    print(Unum2.unit_aware_inv(a))
-
     A = np.array([
-        [2*u.m**2/(u.s**2),     2*u.N,      3*u.N*u.m/u.s,      4*u.m],
-        [5/(u.s**2*u.m),        6*u.N/(u.m**3), 7*u.kg/(u.s**3*u.m), 8/(u.m**2)],
-        [9*u.m/(u.kg*u.s**2),   10/(u.s**2),    12*u.m/(u.s**3),    11/u.kg],
-        [13/(u.kg*u.s),     14/(u.m*u.s),   15/(u.s**2),    16/(u.N*u.s)]
-    ])
-    b = np.array([[1*u.N*u.m,    2*u.N/(u.m**2),     3*u.m/(u.s**2),  4/u.s]]).T
+        [1*u.ul, -1*u.ul, 4.3e6/(u.m*u.s), -13e6/(u.m*u.s)],
+        [0*u.m*u.s, 0*u.m*u.s, 1*u.ul, -1*u.ul],
+        [1*u.ul, 0, 0, 0],
+        [0, 0, 1*u.ul, 0]])
+    b = np.array([[-439000*u.kg/(u.m*u.s**2), 0*u.kg/u.s, 2304*u.Pa, 0.1*u.kg/u.s]]).T
+    x = np.array([[0.1*u.Pa, 0.1*u.Pa, 0.1*u.kg/u.s, 0.1*u.kg/u.s]]).T
+    print(Unum2.apply_padded_units(A,b,x))
 
-    print(A)
-    print(b)
+
+    # a = np.array([[2,3],[4,5]])
+    # a1 = np.array([[u.m, u.m**2/(u.s**2)],[u.s**2/u.m, u.ul]])
+    # A = a*a1
+    # print(A)
+    # print(A@np.eye(2,2))
+    # print(Unum2.unit_aware_inv(A))
+    # print(Unum2.unit_aware_inv(a))
+
+    # A = np.array([
+    #     [2*u.m**2/(u.s**2),     2*u.N,      3*u.N*u.m/u.s,      4*u.m],
+    #     [5/(u.s**2*u.m),        6*u.N/(u.m**3), 7*u.kg/(u.s**3*u.m), 8/(u.m**2)],
+    #     [9*u.m/(u.kg*u.s**2),   10/(u.s**2),    12*u.m/(u.s**3),    11/u.kg],
+    #     [13/(u.kg*u.s),     14/(u.m*u.s),   15/(u.s**2),    16/(u.N*u.s)]
+    # ])
+    # b = np.array([[1*u.N*u.m,    2*u.N/(u.m**2),     3*u.m/(u.s**2),  4/u.s]]).T
+
+    # print(A)
+    # print(b)
     # Aul, _ = Unum2.strip_units(A)
     # print(Aul)
     # print(np.linalg.inv(Aul))
-    Ainv = Unum2.unit_aware_inv(A)
+    # Ainv = Unum2.unit_aware_inv(A)
     # print(Unum2.arr_normalize(Ainv)) # normalize won't get kgm/s2 -> N
-    x = Ainv@b
-    print(x)
+    # x = Ainv@b
+    # print(x)
     
     
 

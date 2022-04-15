@@ -185,6 +185,17 @@ class units2():
 
     # define new units that the source library does not have
     ul = Unum2({}) # unitless quantity
+    inch =  Unum2.unit('inch', 2.54*cm, 'inch')
+    ft =    Unum2.unit('ft', 12*inch, 'foot')
+    gal =   Unum2.unit('gal', 231*inch**3, 'gallon')
+    lbm =   Unum2.unit('lbm', 453.59237*g, 'pound-mass')
+    slug =  Unum2.unit('slug', 32.17404*lbm, 'slug')
+    lbf =   Unum2.unit('lbf', 4.448222*N, 'pound-force')
+    Btu =   Unum2.unit('Btu', 778.17*ft*lbf, 'british-thermal-unit')
+    hp =    Unum2.unit('hp', 550*ft*lbf/s, 'horsepower')
+    psi =   Unum2.unit('psi', lbf/(inch**2), 'pounds-per-square-inch')
+    atm =   Unum2.unit('atm', 14.696*psi, 'atmospheric-pressure')
+    Rk =     Unum2.unit('Rk', 1.8*K, 'Rankine')
 
 
 if __name__ == "__main__":

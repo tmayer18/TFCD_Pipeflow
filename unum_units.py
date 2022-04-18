@@ -124,7 +124,8 @@ class Unum2(Unum):
 
         v_isinstance = np.vectorize(isinstance)
 
-        expected_units = b_units@np.reciprocal(x_units).T # expected units of A based on solution and constant vector
+        units_matrix = Unum2.arr_normalize(b_units@np.reciprocal(x_units).T) # expected units of A based on solution and constant vector
+        expected_units = Unum2.strip_units(units_matrix)[1]
         corrected_units = np.where(v_isinstance(A_units, Unum), A_units, expected_units) # where the original matrix had a non-Unum 1, inject the expected unit
 
         # check if expected match unchanged units

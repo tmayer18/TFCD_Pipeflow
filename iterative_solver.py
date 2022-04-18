@@ -39,7 +39,7 @@ def iterative_compute(pipe_network, fluid, desired_tolerance, max_iterations, NU
 
     #Iterate on the equations
     p_n = np.append(
-            0.1*np.ones((N,1))*u.psf,
+            2304*np.ones((N,1))*u.psf,
             0.1*np.ones((N,1))*u.slug/u.s, # init column solution vector
             axis=0)
     # TODO adaptive init for temperatures
@@ -68,7 +68,6 @@ def iterative_compute(pipe_network, fluid, desired_tolerance, max_iterations, NU
         p_n_ul, _ = Unum2.strip_units(p_n)
         err = max(abs( (p_n_ul-p_n1_ul)/(p_n_ul+1e-16) )) # largest percent change in any solution value
 
-        logger.debug("Solution Vector at iteration %i: %s", i, p_n1)
         logger.debug("Solution Vector at iteration %i: %s", i, Unum2.arr_as_unit(p_n1, iter_solution_log.get_logging_units(N, NUM_STATES))) # TODO logger configure for units
         logger.info("Error at iteration %i: %f", i, err)
 
@@ -103,12 +102,10 @@ class iter_solution_log():
     @staticmethod
     @lru_cache
     def get_logging_units(N, NUM_STATES):
-        print("RAN GET LOGGING_UNITS")
         ret_units = np.ones((N,1))*iter_solution_log.p_units
         ret_units = np.append(ret_units, np.ones((N,1))*iter_solution_log.ṁ_units, axis=0)
         if NUM_STATES >= 3: # if T is present # TODO i don't like this method of specifying units here
             ret_units = np.append(ret_units, np.ones((N,1))*iter_solution_log.T_units, axis=0)
-        print(f"LOGGING WITH {ret_units}")
         return ret_units
 
 if __name__ == '__main__':

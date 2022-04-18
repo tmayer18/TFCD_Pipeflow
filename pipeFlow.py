@@ -12,7 +12,6 @@ import pipe_structures as pipes
 import boundary_conditions as bc
 import pump_curves as pumps
 from iterative_solver import iterative_compute
-from colebrook_friction_factor import fully_turbulent_f
 
 logging.basicConfig(level=logging.DEBUG)
 logging.getLogger("matplotlib").setLevel(logging.WARNING) # matplotlib generates lots of debug logs

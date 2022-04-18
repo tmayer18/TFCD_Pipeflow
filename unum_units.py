@@ -26,6 +26,15 @@ class UnitError(TypeError):
     def __init__(self, *args):
         super().__init__(self, *args)
 
+# we'll need to np.vectorize a bunch of methods so they work on all elements of a matrix.
+#   Since numpy likes enforcing data types (its secretly C), it assumes the data type of the first element applies to the whole matrix
+#   Here we write a partially-bound version of the numpy.vectorize function, as a decorator, that forces the datatype to be floats
+def unum_vectorize(otypes):
+    def _wrapped_func(func):
+        return np.vectorize(func, otypes=otypes)
+    return _wrapped_func
+
+# pylint: disable=protected-access,redefined-outer-name
 class Unum2(Unum):
     '''Our modified version of Unum, implementing required
     features missing from the original library'''
@@ -64,26 +73,26 @@ class Unum2(Unum):
         return self.asUnit(target_unit)
 
     @staticmethod
-    @np.vectorize # decorator that make this a per-element numpy operation
+    @unum_vectorize(otypes=[object]) # decorator that make this a per-element numpy operation
     def arr_as_base_unit(num): # since we can't register a method call nparr.as_base_unit to the numpy array, we write a static method arr_as_base_unit(arr)
         if isinstance(num, Unum):
             return num.as_base_unit()
         return num
 
     @staticmethod
-    @np.vectorize
+    @unum_vectorize(otypes=[object])
     def arr_as_unit(num, other):
         return Unum.coerceToUnum(num).asUnit(other)
 
     @staticmethod
-    @np.vectorize # decorator that make this a per-element numpy operation
-    def strip_units(num): 
+    @unum_vectorize(otypes=[float, object])
+    def strip_units(num):
         if isinstance(num, Unum):
-            return num.asNumber(), Unum2(num._unit)
+            return num._value, Unum2(num._unit)
         return num, 1
 
     @staticmethod
-    @np.vectorize
+    @unum_vectorize(otypes=[object])
     def arr_normalize(num):
         if isinstance(num, Unum):
             return num.normalize()
@@ -97,7 +106,7 @@ class Unum2(Unum):
             return False
     
     @staticmethod
-    @np.vectorize
+    @unum_vectorize(otypes=[bool])
     def arr_check_unit_match(num, other_num):
         if isinstance(num, Unum):
             return num.check_match_units(other_num)
@@ -148,14 +157,15 @@ class Unum2(Unum):
     ignores_zero = ('__add__', '__sub__', '__radd__', '__rsub__') # to use identity matrices, adding zero should not change/set any units (0kg + 4m = 4m)
     for method_str in _upgrade_methods:
         def wrapped_method(self, *args, method_str=method_str, ignores_zero=ignores_zero):
-            # if method_str in ['__add__', '__mul__']:
-            #     print(f"unum math {method_str} : {self}, {args}")
-            if method_str in ignores_zero:
-                if Unum2.coerceToUnum(args[0]).asNumber() == 0:
-                    args = (Unum2(self._unit, value=0),)+args[1:] # set incoming 0 to have matching units
-                if self.asNumber() == 0:
-                    self = Unum2(Unum.coerceToUnum(args[0])._unit, value=0) # set self to match units of incoming unum
-
+            # if method_str in ['__add__', '__mul__', '__radd__']:
+            #     print(f"unum math {method_str} : {self}, {args} --> ", end='')
+            if method_str in ignores_zero: # operations that should ignore zeros with units
+                other_is_zero = Unum2.coerceToUnum(args[0]).asNumber() == 0
+                self_is_zero = self.asNumber() == 0
+                if self_is_zero and other_is_zero: return 0 # anniahalite the units
+                elif other_is_zero: return self # otherwise, keep the units of the non-zero
+                elif self_is_zero:  return args[0]
+                
             ret_obj = getattr(super(), method_str)(*args) # get the __ method from the super class
             return Unum2(ret_obj._unit, ret_obj._value) # recast as a Unum2
         vars()[method_str] = wrapped_method # add to this classes attributes, dynamicaly by name
@@ -194,6 +204,7 @@ class units2():
     Btu =   Unum2.unit('Btu', 778.17*ft*lbf, 'british-thermal-unit')
     hp =    Unum2.unit('hp', 550*ft*lbf/s, 'horsepower')
     psi =   Unum2.unit('psi', lbf/(inch**2), 'pounds-per-square-inch')
+    psf =   Unum2.unit('psf', lbf/(ft**2), 'pound-per-square-foot')
     atm =   Unum2.unit('atm', 14.696*psi, 'atmospheric-pressure')
     Rk =     Unum2.unit('Rk', 1.8*K, 'Rankine')
 
@@ -228,36 +239,26 @@ if __name__ == "__main__":
         [0*u.m*u.s, 0*u.m*u.s, 1*u.ul, -1*u.ul],
         [1*u.ul, 0, 0, 0],
         [0, 0, 1*u.ul, 0]])
+    # num, unit = Unum2.strip_units(test_A)
+    # print(num)
+    # print(unit)
     test_b = np.array([[-439000*u.kg/(u.m*u.s**2), 0*u.kg/u.s, 2304*u.Pa, 0.1*u.kg/u.s]]).T
     test_x = np.array([[0.1*u.Pa, 0.1*u.Pa, 0.1*u.kg/u.s, 0.1*u.kg/u.s]]).T
     print(Unum2.apply_padded_units(test_A,test_b,test_x))
+    print(Unum2.strip_units(test_A))
+    print(Unum2.arr_as_base_unit(test_A))
 
 
-    # a = np.array([[2,3],[4,5]])
-    # a1 = np.array([[u.m, u.m**2/(u.s**2)],[u.s**2/u.m, u.ul]])
-    # A = a*a1
-    # print(A)
-    # print(A@np.eye(2,2))
-    # print(Unum2.unit_aware_inv(A))
-    # print(Unum2.unit_aware_inv(a))
-
-    # A = np.array([
-    #     [2*u.m**2/(u.s**2),     2*u.N,      3*u.N*u.m/u.s,      4*u.m],
-    #     [5/(u.s**2*u.m),        6*u.N/(u.m**3), 7*u.kg/(u.s**3*u.m), 8/(u.m**2)],
-    #     [9*u.m/(u.kg*u.s**2),   10/(u.s**2),    12*u.m/(u.s**3),    11/u.kg],
-    #     [13/(u.kg*u.s),     14/(u.m*u.s),   15/(u.s**2),    16/(u.N*u.s)]
+    # test_A_2 = np.array([
+    #     [1, 0, 0, 0], # for some god-forsaken-reason, at least one element in each row must have units, otherwise... numpy starts making up data? it thinks (int(1)) nas units of kg/s AFTER being called asNumber
+    #     [1, -1, 7000/u.kg/u.s, -21000/u.K/u.s],
+    #     [0*u.m*u.s, 0*u.m*u.N, 1, 1],
+    #     [0, 1*u.ul, 0, 0]
     # ])
-    # b = np.array([[1*u.N*u.m,    2*u.N/(u.m**2),     3*u.m/(u.s**2),  4/u.s]]).T
+    # num, unit = Unum2.strip_units(test_A_2)
+    # print(num)
+    # print(unit)
 
-    # print(A)
-    # print(b)
-    # Aul, _ = Unum2.strip_units(A)
-    # print(Aul)
-    # print(np.linalg.inv(Aul))
-    # Ainv = Unum2.unit_aware_inv(A)
-    # print(Unum2.arr_normalize(Ainv)) # normalize won't get kgm/s2 -> N
-    # x = Ainv@b
-    # print(x)
     
     
 

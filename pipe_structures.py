@@ -72,8 +72,8 @@ class FluidFlow():
         p̄ = (p1+p2)/2
 
         # fluid properties extracted from CoolProp
-        ρ = PropsSI("DMASS", "P", p̄.asNumber(u.Pa), "T", fluid["T_ref"].asNumber(u.K), fluid["name"]) * u.kg/(u.m**3) # [kg/m^3] : fluid density
-        μ = PropsSI("VISCOSITY", "P", p̄.asNumber(u.Pa), "T", fluid["T_ref"].asNumber(u.K), fluid["name"]) * u.Pa*u.s # [Pa*s] : fluid viscosity
+        ρ = PropsSI("DMASS", "P", (p̄+fluid['p_ref']).asNumber(u.Pa), "T", fluid["T_ref"].asNumber(u.K), fluid["name"]) * u.kg/(u.m**3) # [kg/m^3] : fluid density
+        μ = PropsSI("VISCOSITY", "P", (p̄+fluid['p_ref']).asNumber(u.Pa), "T", fluid["T_ref"].asNumber(u.K), fluid["name"]) * u.Pa*u.s # [Pa*s] : fluid viscosity
         γ = ρ*g
         
         Dh = self.Do_in - self.Di_in # hydraulic diameter - calculated at the inlet side
@@ -81,7 +81,7 @@ class FluidFlow():
         # calculating the head loss
         if self.loss == "major":
             # calculating the friction factor
-            Re = 4*ṁ1/(π*μ*Dh) # TODO Re and ϵD is based on hydraulic diameter here
+            Re = abs(4*ṁ1/(π*μ*Dh)) # TODO Re and ϵD is based on hydraulic diameter here
             f = iterative_solve_colebrook(self.ϵD, Re)
             loss_coef = f*self.L/Dh
         elif self.loss == "minor":
@@ -231,7 +231,7 @@ class Tee():
 
         # fluid properties extracted from CoolProp
         p̄ = sum((p_in1, p_in2, p_out1, p_out2))/4
-        ρ = PropsSI("DMASS", "P", p̄.asNumber(u.Pa), "T", fluid["T_ref"].asNumber(u.K), fluid["name"]) * u.kg/(u.m**3) # [kg/m^3] : fluid density
+        ρ = PropsSI("DMASS", "P", (p̄+fluid['p_ref']).asNumber(u.Pa), "T", fluid["T_ref"].asNumber(u.K), fluid["name"]) * u.kg/(u.m**3) # [kg/m^3] : fluid density
 
         K1 = self.K1 # ease of access
         K2 = self.K2

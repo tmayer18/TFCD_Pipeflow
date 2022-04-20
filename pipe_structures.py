@@ -4,6 +4,7 @@
 # 1/31/2022
 
 from colebrook_friction_factor import fully_turbulent_f, iterative_solve_colebrook
+from unum_units import Unum2
 from unum_units import units2 as u
 from CoolProp.CoolProp import PropsSI
 
@@ -32,10 +33,10 @@ class FluidFlow():
         Δz [m] : elevation change, z_out-z_in
         * Units listed may be ignored if a Unum unit-aware numbers is used'''
         
-        self.Di_in = Di_in # [m] : diameter
-        self.Do_in = Do_in # [m]
-        self.Di_out = Di_out # [m]
-        self.Do_out = Do_out # [m]
+        self.Di_in = Unum2.coerceToUnum(Di_in).asUnit(u.m) # [m] : diameter
+        self.Do_in = Unum2.coerceToUnum(Do_in).asUnit(u.m) # [m]
+        self.Di_out = Unum2.coerceToUnum(Di_out).asUnit(u.m) # [m]
+        self.Do_out = Unum2.coerceToUnum(Do_out).asUnit(u.m) # [m]
 
         self.inlet_node = inlet_node # [index]
         self.outlet_node = outlet_node # [index]
@@ -45,10 +46,10 @@ class FluidFlow():
         assert loss in ["major", "minor"], "loss-type must be 'major' or 'minor'"
         self.loss = loss
 
-        self.L = L # [m] : length
-        self.ϵD = ϵD # [ul] : relative roughness
-        self.K = K # [ul] : loss coefficient, tpically K=ft*C
-        self.Δz = Δz # [m] : elevation change
+        self.L = Unum2.coerceToUnum(L).asUnit(u.m) # [m] : length
+        self.ϵD = Unum2.coerceToUnum(ϵD).asUnit(u.ul) # [ul] : relative roughness
+        self.K = Unum2.coerceToUnum(K).asUnit(u.ul) # [ul] : loss coefficient, tpically K=ft*C
+        self.Δz = Unum2.coerceToUnum(Δz).asUnit(u.m) # [m] : elevation change
 
         self.compute = self.compute_flow # alias redirect for the compute call
 
@@ -81,7 +82,7 @@ class FluidFlow():
         # calculating the head loss
         if self.loss == "major":
             # calculating the friction factor
-            Re = abs(4*ṁ1/(π*μ*Dh)) # TODO Re and ϵD is based on hydraulic diameter here
+            Re = abs(4*ṁ1/(π*μ*Dh)).asUnit(u.ul) # TODO Re and ϵD is based on hydraulic diameter here
             f = iterative_solve_colebrook(self.ϵD, Re)
             loss_coef = f*self.L/Dh
         elif self.loss == "minor":
@@ -305,7 +306,6 @@ def matrix_expander(A, NxM, row:tuple, col:tuple=(0,)):
 if __name__ == "__main__":
     # print(matrix_expander([[1,2],[3,4]], (4,3), (1,3), (1,2)))
 
-    from unum_units import Unum2
     inch = Unum2.unit('inch', 2.54*u.cm, "inch")
     feet = Unum2.unit('ft', 12*inch, "foot")
     kgps = Unum2.unit('kgps', u.kg/u.s, "kilogram-per-second")

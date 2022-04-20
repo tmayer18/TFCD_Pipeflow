@@ -9,6 +9,7 @@ from unum_units import Unum2
 from unum_units import units2 as u
 import logging
 from functools import lru_cache
+from tabulate import tabulate
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +101,7 @@ class iter_solution_log():
         iter_solution_log.get_logging_units.cache_clear()
 
     @staticmethod
-    @lru_cache
+    @lru_cache # cache the result so this doesn't slow iterations down
     def get_logging_units(N, NUM_STATES):
         ret_units = np.ones((N,1))*iter_solution_log.p_units
         ret_units = np.append(ret_units, np.ones((N,1))*iter_solution_log.ṁ_units, axis=0)
@@ -108,5 +109,21 @@ class iter_solution_log():
             ret_units = np.append(ret_units, np.ones((N,1))*iter_solution_log.T_units, axis=0)
         return ret_units
 
-if __name__ == '__main__':
-    print(iter_solution_log.get_logging_units(4, 2))
+# results printing
+def print_results_table(p, has_temp=False, ṁ_units=u.kg/u.s, p_units=u.Pa, T_units=u.K):
+    table = []
+    p = np.array(p).flatten()
+    N = len(p)//(2+has_temp)
+    for n in range(N): # collect a single node on the table
+        entry = []
+        entry.append(n) # node number
+        entry.append(p[n+N].asNumber(ṁ_units))
+        entry.append(p[n].asNumber(p_units))
+        if has_temp:
+            entry.append(p[n+2*N].asNumber(T_units))
+        table.append(entry)
+    headers = ["Node #", f"ṁ {ṁ_units.strUnit()}", f"p {p_units.strUnit()}"]
+    if has_temp:
+        headers.append(f"T {T_units.strUnit()}")
+
+    print(tabulate(table, headers))

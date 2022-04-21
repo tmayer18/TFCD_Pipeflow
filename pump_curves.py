@@ -9,6 +9,8 @@ import matplotlib.pyplot as plt
 g = 9.81 # [m/s^2] : Acceleration due to gravity
 from pipe_structures import matrix_expander
 
+# TODO add units to this system - currently not supported
+
 
 # Module contains classes for encapsuling data for pumps in pipe-flow networks
 

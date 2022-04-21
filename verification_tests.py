@@ -5,14 +5,13 @@
 # Various verification tests for the pipe-flow solver code
 #   constructed with juypter notebook notation for running individual tests
 
-import numpy as np
 import logging
-from unum_units import Unum2
 from unum_units import units2 as u
 import pipe_structures as pipes
 import thermal_structures as thermal
 import boundary_conditions as bc
-from iterative_solver import iterative_compute, iter_solution_log, print_results_table
+import solution_initialization as init
+import iterative_solver as solver
 from colebrook_friction_factor import fully_turbulent_f
 
 logging.basicConfig(level=logging.INFO)
@@ -35,12 +34,13 @@ pipe_network = (
     bc.BoundaryCondition(1, 14.7*u.psi, 'pressure')
 )
 
-iter_solution_log.config(pressure_units=u.psf, massflow_units=u.slug/u.s)
-p_n, N = iterative_compute(pipe_network, fluid, 1e-8, 100, NUM_STATES)
+p_0, N = init.uniform_fluidflow(pipe_network, NUM_STATES)
+
+solver.iter_solution_log.config(pressure_units=u.psf, massflow_units=u.slug/u.s)
+p_n = solver.iterative_compute(pipe_network, fluid, 1e-8, 100, p_0, N, NUM_STATES)
 
 print(' SOLUTION ')
-p_n = Unum2.arr_as_unit(p_n, iter_solution_log.get_logging_units(2, 2))
-print(p_n)
+solver.print_results_table(p_n, p_units=u.psi, ṁ_units=u.slug/u.s)
 print("Expected ṁ = 0.07119 [slug/s]")
 
 # %% Single Elbow - Homework 4a    ==========================================
@@ -61,12 +61,13 @@ pipe_network = (
     bc.BoundaryCondition(1, -1.5*u.psi, 'pressure')
 )
 
-iter_solution_log.config(pressure_units=u.psf, massflow_units=u.slug/u.s)
-p_n, N = iterative_compute(pipe_network, fluid, 1e-8, 30, NUM_STATES)
+p_0, N = init.uniform_fluidflow(pipe_network, NUM_STATES)
+
+solver.iter_solution_log.config(pressure_units=u.psf, massflow_units=u.slug/u.s)
+p_n = solver.iterative_compute(pipe_network, fluid, 1e-8, 30, p_0, N, NUM_STATES)
 
 print(' SOLUTION ')
-p_n = Unum2.arr_as_unit(p_n, iter_solution_log.get_logging_units(2, 2))
-print(p_n)
+solver.print_results_table(p_n, p_units=u.psi, ṁ_units=u.slug/u.s)
 print("Expected ṁ = 0.20357 [slug/s]")
 
 # %% Single Nozzle - Homework 4b    ==================================================
@@ -78,19 +79,19 @@ fluid = {
     "p_ref": 0, # adjustment from network guage pressures to absolute
 }
 
-
 pipe_network = (
     bc.BoundaryCondition(0, 14.7*u.psi, 'pressure'),
     pipes.Minor(4*u.inch, 2*u.inch, 0,1, 0),
     bc.BoundaryCondition(1, 8*u.psi, 'pressure')
 )
 
-iter_solution_log.config(pressure_units=u.psf, massflow_units=u.slug/u.s)
-p_n, N = iterative_compute(pipe_network, fluid, 1e-8, 30, NUM_STATES)
+p_0, N = init.uniform_fluidflow(pipe_network, NUM_STATES)
+
+solver.iter_solution_log.config(pressure_units=u.psf, massflow_units=u.slug/u.s)
+p_n = solver.iterative_compute(pipe_network, fluid, 1e-8, 30, p_0, N, NUM_STATES)
 
 print(' SOLUTION ')
-p_n = Unum2.arr_as_unit(p_n, np.array([[u.psi, u.psi, u.slug/u.s, u.slug/u.s]]).T)
-print(p_n)
+solver.print_results_table(p_n, p_units=u.psf, ṁ_units=u.slug/u.s)
 print("Expected ṁ = 1.3785 [slug/s]")
 
 # %% Simple Network- Homework 4c    ============================================
@@ -117,12 +118,13 @@ pipe_network = (
     bc.BoundaryCondition(6, 1e-10*u.psi, 'pressure')
 )
 
-iter_solution_log.config(pressure_units=u.psf, massflow_units=u.slug/u.s)
-p_n, N = iterative_compute(pipe_network, fluid, 1e-8, 30, NUM_STATES)
+p_0, N = init.uniform_fluidflow(pipe_network, NUM_STATES)
+
+solver.iter_solution_log.config(pressure_units=u.psf, massflow_units=u.slug/u.s)
+p_n = solver.iterative_compute(pipe_network, fluid, 1e-8, 30, p_0, N, NUM_STATES)
 
 print(' SOLUTION ')
-p_n = Unum2.arr_as_unit(p_n, iter_solution_log.get_logging_units(7, 2))
-print(p_n)
+solver.print_results_table(p_n, ṁ_units=u.slug/u.s, p_units=u.psf)
 print("Expected ṁ = 5.5107 [slug/s]")
 
 
@@ -163,11 +165,13 @@ pipe_network = (
     bc.BoundaryCondition(14, u.atm, 'pressure')
 )
 
-iter_solution_log.config(pressure_units=u.psi, massflow_units=u.slug/u.s)
-p_n, N = iterative_compute(pipe_network, fluid, 1e-8, 30, NUM_STATES)
+p_0, N = init.uniform_fluidflow(pipe_network, NUM_STATES)
+
+solver.iter_solution_log.config(pressure_units=u.psi, massflow_units=u.slug/u.s)
+p_n = solver.iterative_compute(pipe_network, fluid, 1e-8, 30, p_0, N, NUM_STATES)
 
 print(' SOLUTION ')
-print_results_table(p_n, ṁ_units=(u.slug/u.s), p_units=(u.psi))
+solver.print_results_table(p_n, ṁ_units=(u.slug/u.s), p_units=(u.psi))
 print("\nExpected output ṁ_14 = 0.21469 [slug/s]")
 print("Expected inlet pressure p_0 = 7.48 [psig]")
 
@@ -192,11 +196,13 @@ pipe_network = (
     bc.BoundaryCondition(1, 14.7*u.psi, 'pressure')
 )
 
+p_0, N = init.uniform_thermal_fluidflow(pipe_network, NUM_STATES)
+
 # iter_solution_log.config(pressure_units=u.psf, massflow_units=u.slug/u.s)
-p_n, N = iterative_compute(pipe_network, fluid, 1e-8, 100, NUM_STATES)
+p_n = solver.iterative_compute(pipe_network, fluid, 1e-8, 100, p_0, N, NUM_STATES)
 
 print(' SOLUTION ')
-print_results_table(p_n, ṁ_units=(u.slug/u.s), p_units=(u.psi), has_temp=True)
+solver.print_results_table(p_n, ṁ_units=(u.slug/u.s), p_units=(u.psi), has_temp=True)
 
 print("Expected ṁ = 0.07119 [slug/s]")
 print("Expected T1=T2 = 315K")

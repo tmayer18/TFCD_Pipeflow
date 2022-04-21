@@ -4,7 +4,6 @@
 # 3/23/2022
 
 import numpy as np
-import pipe_structures as pipes
 from unum_units import Unum2
 from unum_units import units2 as u
 import logging
@@ -13,44 +12,26 @@ from tabulate import tabulate
 
 logger = logging.getLogger(__name__)
 
+
 # module contains code that iteratites on a matrix-set to solve the state of a pipe-network
 
 # TODO i suspect the unit conversions take a lot of time? Analyze that time and see if cacheing something could make calculations faster
 
-def iterative_compute(pipe_network, fluid, desired_tolerance, max_iterations, NUM_STATES):
+def iterative_compute(pipe_network, fluid, desired_tolerance, max_iterations, p_0, N, NUM_STATES):
     '''Iteratively solves for the state of a pipe-network
     pipe_network : List of pipe-structure objects
     fluid : string of fluid to lookup properties in coolprop
     desired_tolerance : consequetive change between iterations to stop iterating at
     max_iterations : cap of iterations to compute
+    p_0 : initial solution vector [p1, p2, ... ṁ1, ṁ2, ... T1, T2, ...]
+    N : Number of nodes in the network
     NUM_STATES : properties at each node to compute, ie pressure and massflow = 2'''
-    # print some stuff about number of piping elements, and size of M matrix
-    N = 0 # number of nodes
-    last_node = -1
-    pipe_likes = 0
-    for elem in pipe_network:
-        N += elem.num_nodes
-        last_node = max((last_node,)+elem.nodes)
-        if type(elem) in [pipes.Minor, pipes.Pipe, pipes.Tee, pipes.Annulus]:
-            pipe_likes += 1 # count the number of pipe-likes in the network
-
-    N = int(N/2) # Each node in the network shows up exactly twice in the network, at the start and end of its pipe-like, or as a boundary condition
-    assert last_node+1 == N, "There aren't enough equations!"
-    logger.info("There are %i pipe-likes in the network, requiring a %ix%i matrix to solve\n", pipe_likes, N*NUM_STATES, N*NUM_STATES)
 
     #Iterate on the equations
-    p_n = np.concatenate((
-            2304*np.ones((N,1))*u.psf,
-            0.1*np.ones((N,1))*u.slug/u.s, # init column solution vector
-            280*np.ones((N,1))*u.K),  # TODO FIXME This needs to not be explicit here
-            axis=0)
-    # TODO adaptive init for temperatures
-    # that will probably mean the initialization needs to go somewhere else? along with the N counting code?
-    # Should the user get some input on the initialization values?
-    # TODO 2 - Move init one level up, since otherwise we don't know the size of this arrya?
-
     err = 10e2 # init error value
     i = 0 # iteration counter
+
+    p_n = p_0.copy() # copy the initialized solution vector so we can modify it
 
     while abs(err) > desired_tolerance and i <= max_iterations:
         A = np.empty((0, N*NUM_STATES)) # init empty matrix
@@ -81,7 +62,7 @@ def iterative_compute(pipe_network, fluid, desired_tolerance, max_iterations, NU
     if i >= max_iterations:
         logger.warning("The solution is not converged. Iterations terminated after iteration limit was reached")
 
-    return p_n, N
+    return p_n
 
 
 # config for units on logged data

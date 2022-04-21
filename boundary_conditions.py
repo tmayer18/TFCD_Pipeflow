@@ -20,6 +20,7 @@ class BoundaryCondition():
         self.num_nodes = 1
         self.nodes = (node,)
 
+    # pylint: disable=unused-argument
     def compute(self, p_n, fluid, N, NUM_STATES=2):
         '''alias redirect for the compute call
         
@@ -28,8 +29,6 @@ class BoundaryCondition():
         NUM_STATES : number of fluid properties tracked ie. pressure & massflow = 2
         '''
         return self.apply_boundary_condition(N, NUM_STATES)
-
-    # TODO when we get to implementing more boundary condition types later in the homework schedule, it may be helpful to do a proper inheritance structure here?
 
     def apply_boundary_condition(self, N, NUM_STATES):
         '''Returns the linear algebra matricies to solve for the next iteration with this boundary condition

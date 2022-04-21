@@ -53,12 +53,13 @@ class FluidFlow():
 
         self.compute = self.compute_flow # alias redirect for the compute call
 
-    def compute_flow(self, p_n, fluid, N):
+    def compute_flow(self, p_n, fluid, N, NUM_STATES=2):
         '''Returns the linear algebra matricies to solve for the next iteration in a pipe
 
         p_n : solution column vector [p0, p1, p2, ..., ṁ0, ṁ1, ṁ2, ...], at current iteration n, for each node index
-        fluid : string of fluid to lookup properties in coolprop 
+        fluid : Dict of fluid properties {name:water, T_ref:215K, p_ref:atm} to pass to CoolProp
         N : total number of nodes, indicates 1/2 number of eqs ie size of matrix
+        NUM_STATES : number of fluid properties tracked ie. pressure & massflow = 2
 
         returns (M,b) to be appended to a full 2Nx2N matrix s.t. M*p_n+1 = b
         '''
@@ -101,7 +102,7 @@ class FluidFlow():
             [0*u.kg/u.s]])   # COM
 
         # expand the columns according to what nodes the pipe has
-        M = matrix_expander(M, (2,N*2), (0,1), (self.inlet_node, self.outlet_node, N+self.inlet_node, N+self.outlet_node))
+        M = matrix_expander(M, (2,N*NUM_STATES), (0,1), (self.inlet_node, self.outlet_node, N+self.inlet_node, N+self.outlet_node))
         return M,b
 
 class Pipe(FluidFlow):
@@ -205,12 +206,13 @@ class Tee():
 
         self.compute = self.compute_tee # redirect alias for compute -> compute_tee
 
-    def compute_tee(self, p_n, fluid, N):
+    def compute_tee(self, p_n, fluid, N, NUM_STATES=2):
         '''Returns the linear algebra matricies to solve for the next iteration in a minor-loss component
 
         p_n : solution column vector [p0, p1, p2, ..., ṁ0, ṁ1, ṁ2, ...], at current iteration n, for each node index
-        fluid : Dict of fluid properties {ρ:val, μ:val}
+        fluid : Dict of fluid properties {name:water, T_ref:215K, p_ref:atm} to pass to CoolProp
         N : total number of nodes, indicates 1/2 number of eqs ie size of matrix
+        NUM_STATES : number of fluid properties tracked ie. pressure & massflow = 2
 
         returns (M,b) to be appended to a full 2Nx2N matrix s.t. M*p_n+1 = b
         '''
@@ -271,7 +273,7 @@ class Tee():
 
         # expand matrix to full NxN size
         all_nodes = self.nodes
-        M = matrix_expander(M, (3,N*2), (0,1,2), all_nodes+tuple(map(lambda x:x+N, all_nodes)))
+        M = matrix_expander(M, (3,N*NUM_STATES), (0,1,2), all_nodes+tuple(map(lambda x:x+N, all_nodes)))
 
         return M,b
 

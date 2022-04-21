@@ -10,6 +10,7 @@ import logging
 from unum_units import Unum2
 from unum_units import units2 as u
 import pipe_structures as pipes
+import thermal_structures as thermal
 import boundary_conditions as bc
 from iterative_solver import iterative_compute, iter_solution_log, print_results_table
 from colebrook_friction_factor import fully_turbulent_f
@@ -169,3 +170,33 @@ print(' SOLUTION ')
 print_results_table(p_n, ṁ_units=(u.slug/u.s), p_units=(u.psi))
 print("\nExpected output ṁ_14 = 0.21469 [slug/s]")
 print("Expected inlet pressure p_0 = 7.48 [psig]")
+
+# %% Single Adiabatic Pipe - Project   ===============================================================
+NUM_STATES = 3
+
+fluid = {
+    'name':'water',
+    'p_ref':0,
+    'T_ref':300*u.K
+}
+
+L = 6*u.ft
+D = 0.936*u.inch
+
+pipe_network = (
+    bc.BoundaryCondition(0, 16*u.psi, 'pressure'),
+    bc.BoundaryCondition(0, 315*u.K, 'temperature'),
+    thermal.AdiabaticPipe(
+        pipes.Pipe(L, D, 0, 1, 2e-4*u.ft/D, 1*u.ft)
+    ),
+    bc.BoundaryCondition(1, 14.7*u.psi, 'pressure')
+)
+
+# iter_solution_log.config(pressure_units=u.psf, massflow_units=u.slug/u.s)
+p_n, N = iterative_compute(pipe_network, fluid, 1e-8, 100, NUM_STATES)
+
+print(' SOLUTION ')
+print_results_table(p_n, ṁ_units=(u.slug/u.s), p_units=(u.psi), has_temp=True)
+
+print("Expected ṁ = 0.07119 [slug/s]")
+print("Expected T1=T2 = 315K")

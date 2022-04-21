@@ -36,16 +36,18 @@ def iterative_compute(pipe_network, fluid, desired_tolerance, max_iterations, NU
 
     N = int(N/2) # Each node in the network shows up exactly twice in the network, at the start and end of its pipe-like, or as a boundary condition
     assert last_node+1 == N, "There aren't enough equations!"
-    logger.info("There are %i pipe-likes in the network, requiring a %ix%i matrix to solve\n", pipe_likes, N*2, N*2)
+    logger.info("There are %i pipe-likes in the network, requiring a %ix%i matrix to solve\n", pipe_likes, N*NUM_STATES, N*NUM_STATES)
 
     #Iterate on the equations
-    p_n = np.append(
+    p_n = np.concatenate((
             2304*np.ones((N,1))*u.psf,
             0.1*np.ones((N,1))*u.slug/u.s, # init column solution vector
+            280*np.ones((N,1))*u.K),  # TODO FIXME This needs to not be explicit here
             axis=0)
     # TODO adaptive init for temperatures
     # that will probably mean the initialization needs to go somewhere else? along with the N counting code?
     # Should the user get some input on the initialization values?
+    # TODO 2 - Move init one level up, since otherwise we don't know the size of this arrya?
 
     err = 10e2 # init error value
     i = 0 # iteration counter
@@ -55,7 +57,7 @@ def iterative_compute(pipe_network, fluid, desired_tolerance, max_iterations, NU
         b = np.empty((0,1))
         
         for elem in pipe_network:
-            Ai, bi = elem.compute(p_n, fluid, N)
+            Ai, bi = elem.compute(p_n, fluid, N, NUM_STATES=NUM_STATES)
             A = np.append(A, Ai, axis=0) # append matrix-linearized equations to the matrix
             b = np.append(b, bi, axis=0)
 

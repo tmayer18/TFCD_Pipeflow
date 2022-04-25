@@ -41,7 +41,7 @@ def uniform_fluidflow(network, NUM_STATES, ṁ=0.1*u.kg/u.s, p=u.atm):
     assert NUM_STATES==2, 'fluid flow only initializes 2 states: p, ṁ'
     N = network_analysis(network, NUM_STATES)
     p_0 = np.concatenate((
-        np.ones((N,1))*p,
+        np.ones((N,1))*p,   # TODO these as base units for speed? We chould check that
         np.ones((N,1))*ṁ
     ))
     return p_0, N

@@ -38,9 +38,6 @@ def iterative_solve_colebrook(ϵD, Re):
 
         return cen #take bisector value as the friction factor to return
 
-    #else:
-        # TODO error handling and defaults
-
 def fully_turbulent_f(ϵD):
     '''Returns the fully-turbulent friction factor from the Colebrook Equation
 

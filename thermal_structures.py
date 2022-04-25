@@ -3,10 +3,13 @@
 # Timothy Mayer
 # 3/25/2022
 
+import math
 import numpy as np
+from unum_units import Unum2
 from unum_units import units2 as u
 import pipe_structures as pipes
 from pipe_structures import matrix_expander
+from nusselt_correlations import convection_coefficient_lookup
 from CoolProp.CoolProp import PropsSI
 
 π = np.pi
@@ -39,6 +42,8 @@ class ThermallyConnected():
             else:
                 raise ValueError("Node index values don't match")
 
+        self.wall.send_dimensions(pipeA, pipeB) # update the wall with the dimensions of the two pipes
+
     def compute(self, p_n, fluid, N, NUM_STATES=3):
         '''Returns the linear algebra matricies to solve for the next iteration in a pipe
 
@@ -49,16 +54,6 @@ class ThermallyConnected():
 
         returns (M,b) to be appended to a full 3Nx3N matrix s.t. M*p_n+1 = b
         '''
-        # pass the fluid-flow calculations to the child pipe class
-        # TODO fluid properties determined by states
-        M_a, b_a = self.pipeA.compute(p_n, fluid, N, NUM_STATES=NUM_STATES)
-        M_b, b_b = self.pipeB.compute(p_n, fluid, N, NUM_STATES=NUM_STATES)
-
-        # # pad out missing Temperature entries
-        # M_a = matrix_expander(M_a, (2,N*3), (0,1), range(0,N*2))
-        # M_b = matrix_expander(M_b, (2,N*3), (0,1), range(0,N*2))
-
-        # generate temperature-solving matrix
         # extract states in readable form
         p_n = np.array(p_n).flatten() # flatten column vector into single list
 
@@ -81,30 +76,56 @@ class ThermallyConnected():
         T̄_a = (T1_a+T2_a)/2
         T̄_b = (T1_b+T2_b)/2
 
-        # ρ = fluid["ρ"]
-        ρ_a = PropsSI('DMASS', 'P', p̄_a, 'T', T̄_a, 'water') # [kg/m^3] # TODO pass in fluid name dynamically
-        ρ_b = PropsSI('DMASS', 'P', p̄_b, 'T', T̄_b, 'water') # [kg/m^3] # TODO pass in fluid name dynamically
-        # TODO units integration to this 
-        
+        # pass the fluid-flow calculations to the child pipe class
+        fluid_Ta = fluid.copy()
+        fluid_Ta['T_ref'] = T̄_a # replace the placeholder 'reference Temp' with the fluid's actual temp
+        fluid_Tb = fluid.copy()
+        fluid_Tb['T_ref'] = T̄_b
+
+        M_a, b_a = self.pipeA.compute(p_n, fluid_Ta, N, NUM_STATES=NUM_STATES)
+        M_b, b_b = self.pipeB.compute(p_n, fluid_Tb, N, NUM_STATES=NUM_STATES)
+        # TODO multiple fluids? Different for each pipe
+
+        # coolprop properties
+        p̄_a_val = (p̄_a+fluid['p_ref']).asNumber(u.Pa) # we use these unitless-versions in Coolprop lookups a few times. Lets convert to the proper units only once for speed
+        p̄_b_val = (p̄_b+fluid['p_ref']).asNumber(u.Pa)
+        T̄_a_val = T̄_a.asNumber(u.K)
+        T̄_b_val = T̄_b.asNumber(u.K)
+
+        ρ_a = PropsSI('DMASS', 'P', p̄_a_val, 'T', T̄_a_val, fluid['name']) * u.kg/(u.m**3) # [kg/m^3] : fluid density
+        ρ_b = PropsSI('DMASS', 'P', p̄_b_val, 'T', T̄_b_val, fluid['name']) * u.kg/(u.m**3) # [kg/m^3] : fluid density
+        μ_a = PropsSI("VISCOSITY", "P", p̄_a_val, 'T', T̄_a_val, fluid["name"]) * u.Pa*u.s # [Pa*s] : fluid viscosity
+        μ_b = PropsSI("VISCOSITY", "P", p̄_b_val, 'T', T̄_b_val, fluid["name"]) * u.Pa*u.s # [Pa*s] : fluid viscosity
+        Pr_a = PropsSI('PRANDTL', 'P', p̄_a_val, 'T', T̄_a_val, fluid['name']) # [ul] : Prandtl Number
+        Pr_b = PropsSI('PRANDTL', 'P', p̄_b_val, 'T', T̄_b_val, fluid['name']) # [ul] : Prandtl Number
+        Cp_a = PropsSI('CPMASS', 'P', p̄_a_val, 'T', T̄_a_val, fluid['name']) # [J/kg/K] : Specific Heat Capacity
+        Cp_b = PropsSI('CPMASS', 'P', p̄_b_val, 'T', T̄_b_val, fluid['name']) # [J/kg/K] : Specific Heat Capacity
+
+        # Reynolds Number
+        Dh_a = self.pipeA.Do_in - self.pipeA.Di_in
+        Dh_b = self.pipeB.Do_in - self.pipeB.Di_in
+        Re_a = abs(4*ṁ1_a/(π*μ_a*Dh_a)).asUnit(u.ul)
+        Re_b = abs(4*ṁ1_a/(π*μ_b*Dh_b)).asUnit(u.ul)
+
+        # lookup convection coefficients
+        h_a = convection_coefficient_lookup(self.pipeA, Pr_a, Re_a, T̄_b, T̄_a, self.wall.k)
+        h_b = convection_coefficient_lookup(self.pipeB, Pr_b, Re_b, T̄_a, T̄_b, self.wall.k)
+        # NOTE here we assume the surf. temp of one fluid is the mean temp of the other... not strictly true
+
         # calculate thermal resistance
-        R_a = 0 #1/(h*A)
-        R_b = 0#1/(h*A)
-        R_wall = 0#scylindrical_thermal_resistance() #wall.resistance
-        # TODO handle straight walls too...
+        R_a = 1/(h_a*self.wall.areaA)
+        R_b = 1/(h_b*self.wall.areaB)
+        R_wall = self.wall.resistance
 
         R_tol = R_a + R_b + R_wall
 
         # calculate heat transfer between pipes, Q
         ΔT_lm = (T1_a - T2_a + T2_b - T1_b)/(np.log((T2_a - T2_b)/(T1_a - T1_b)))
         Q = ΔT_lm / R_tol
-        # TODO
-
-        # calculate heat capacity from properties
-        Cp = PropsSI('CPMASS', 'P', p̄_a, 'T', T̄_a, 'water') # [J/kg/K]
 
         # temperature matrices (abstracted into function since we do it twice)
-        M_Ta, b_Ta = temp_matrix_assemble(self.pipeA, ρ_a, Cp, ṁ1_a, ṁ2_a, T1_a, T2_a, Q, N)
-        M_Tb, b_Tb = temp_matrix_assemble(self.pipeB, ρ_b,Cp, ṁ1_b, ṁ2_b, T1_b, T2_b, Q, N)
+        M_Ta, b_Ta = temp_matrix_assemble(self.pipeA, ρ_a, Cp_a, ṁ1_a, ṁ2_a, T1_a, T2_a, Q, N)
+        M_Tb, b_Tb = temp_matrix_assemble(self.pipeB, ρ_b, Cp_b, ṁ1_b, ṁ2_b, T1_b, T2_b, Q, N)
 
         # assemble all matrices together
         M = np.concatenate((M_a, M_Ta, M_b, M_Tb))
@@ -112,7 +133,7 @@ class ThermallyConnected():
 
         return M,b
 
-class AdiabaticPipe(): # TODO this name is Pipe?
+class AdiabaticPipe(): # TODO this name is Pipe? does this only work for pipes?
     '''Wrapper class for insulated pipe'''
 
     def __init__(self, pipe: pipes.FluidFlow):
@@ -136,11 +157,6 @@ class AdiabaticPipe(): # TODO this name is Pipe?
 
         returns (M,b) to be appended to a full 3Nx3N matrix s.t. M*p_n+1 = b
         '''
-        # pass the fluid-flow calculations to the child pipe
-        M_f, b_f = self.pipe.compute(p_n, fluid, N, NUM_STATES=NUM_STATES)
-        # M_f = matrix_expander(M_f, (2,N*3), (0,1), range(0,N*2))
-
-        # generate temperature-solving matrix
         p_n = np.array(p_n).flatten() # flatten column vector to single list
 
         p1 = p_n[self.inlet_node]
@@ -153,7 +169,11 @@ class AdiabaticPipe(): # TODO this name is Pipe?
         p̄ = (p1+p2)/2 # average pressure for property lookup
         T̄ = (T1+T2)/2
 
-        # TODO T property into fluid array for florwate compute
+        # pass the fluid-flow calculations to the child pipe
+        fluid_T = fluid.copy() # create a version of fluid with T_ref = T̄ for the fluid-flow calculations
+        fluid_T['T_ref'] = T̄
+        M_f, b_f = self.pipe.compute(p_n, fluid_T, N, NUM_STATES=NUM_STATES)
+
         ρ = PropsSI('DMASS', 'P', (p̄+fluid['p_ref']).asNumber(u.Pa), 'T', T̄.asNumber(u.K), fluid['name']) * u.kg/(u.m**3) # [kg/m^3] : fluid density
         Cp = PropsSI('CPMASS', 'P', (p̄+fluid['p_ref']).asNumber(u.Pa), 'T', T̄.asNumber(u.K), fluid['name']) * u.J/(u.kg*u.K) # [J/kg*K] : fluid mass specific heat
 
@@ -183,25 +203,47 @@ def temp_matrix_assemble(pipe, ρ, Cp, ṁ1, ṁ2, T1, T2, Q, N):
     M_T = matrix_expander(M_T, (1,3*N), (0,), (pipe.inlet_node+N, pipe.outlet_node+N, pipe.inlet_node+2*N, pipe.outlet_node+2*N) )
     return M_T, b_T
 
-# class ThermalWall():
-#     '''parent class for conductive thermal walls through which heat-transfer occurs'''
+class ThermalWall():
+    '''parent class for conductive thermal walls through which heat-transfer occurs'''
 
-#     def __init__(self):
-#         self.resistance = 0 # [W/m^2]
+    def __init__(self, k):
+        self.k = Unum2.coerceToUnum(k).asUnit(u.W/u.m/u.K) # [W/m/K] : wall thermal conductivity
+        self.resistance = 0 # [W/m^2] : conductive thermal resistance
+        self.areaA = 0 # [m^2] : heat-transfer area from the pipeA-side-fluid
+        self.areaB = 0 # [m^2] : heat-transfer area from the pipeB-side-fluid
 
-# ported from schuyler's getR() function
-def cylindrical_thermal_resistance(d_outer,d_inner,L,k):
-    '''returns the thermal conductive resistance through a cylindrical wall
-    d_outer [m] : diameter of outside of wall (larger dimension)
-    d_inner [m] : diameter of inside of wall (smaller dimension
-    L [m] : Length of of the pipes connected
-    k [W/m/K] : Thermal conductivity resistance of wall'''
+    def send_dimensions(self, pipeA, pipeB):
+        '''Called when a ThermallyConnected object is created, and passes the dimensional
+        information from the two pipes to the wall object, to prevent repeated input data'''
+        raise NotImplementedError # this is the base class, please extend this class
+        # TODO maybe add some base functionality?
 
-    r_outer = d_outer/2
-    r_inner = d_inner/2 # these two halves would cancel eachother out, but radius is "more correct"
+class NestedPipeWall(ThermalWall):
+    '''thermal-wall for a pipe contained within another pipe (making it an annulus)'''
 
-    R = np.log(r_inner/r_outer)/(2*π*L*k) #[K/W]
-    return R
+    def send_dimensions(self, pipeA, pipeB):
+        if isinstance(pipeA, pipes.Annulus):
+            annularPipe = pipeA
+            rA = pipeA.Di_in # radius of pipe A is inner dimension
+            innerPipe = pipeB
+            rB = pipeB.Do_in
+        elif isinstance(pipeA, pipes.Annulus):
+            annularPipe = pipeB
+            rB = pipeB.Di_in
+            innerPipe = pipeA
+            rA = pipeA.Do_in
+        assert isinstance(innerPipe, pipes.Pipe) and isinstance(annularPipe, pipes.Annulus), 'NestedPipeWall must contain one pipe and one annulus'
+
+        # t = (annularPipe.Di_in - innerPipe.Do_in)/2 # [m] : thickness of wall
+        
+        assert annularPipe.L == innerPipe.L, 'The pipes must be of the same length'
+        L = annularPipe.L
+
+        self.areaA = 2*π*L*rA
+        self.areaB = 2*π*L*rB
+
+            # ported from Scheuyler's getR() function
+        self.resistance = math.log(innerPipe.Do_in/annularPipe.Di_in)/(2*π*L*self.k).asUnit(u.K/u.W) # [K/W] : conductive resistance
     
 
 if __name__ == "__main__":

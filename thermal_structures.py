@@ -44,11 +44,10 @@ class ThermallyConnected():
 
         self.wall.send_dimensions(pipeA, pipeB) # update the wall with the dimensions of the two pipes
 
-    def compute(self, p_n, fluid, N, NUM_STATES=3):
+    def compute(self, p_n, N, NUM_STATES=3):
         '''Returns the linear algebra matricies to solve for the next iteration in a pipe
 
         p_n : solution column vector [p0, p1, p2, ..., ṁ0, ṁ1, ṁ2, ..., T1, T2, ...], at current iteration n, for each node index
-        fluid : Dict of fluid properties {name:water, T_ref:215K, p_ref:atm} to pass to CoolProp
         N : total number of nodes, indicates 1/3 number of eqs ie size of matrix
         NUM_STATES : number of fluid properties tracked ie. pressure & massflow & temp = 3
 
@@ -77,29 +76,27 @@ class ThermallyConnected():
         T̄_b = (T1_b+T2_b)/2
 
         # pass the fluid-flow calculations to the child pipe class
-        fluid_Ta = fluid.copy()
-        fluid_Ta['T_ref'] = T̄_a # replace the placeholder 'reference Temp' with the fluid's actual temp
-        fluid_Tb = fluid.copy()
-        fluid_Tb['T_ref'] = T̄_b
+        self.pipeA.fluid['T_ref'] = T̄_a # replace the placeholder 'reference Temp' with the fluid's actual temp
+        self.pipeB.fluid['T_ref'] = T̄_b
 
-        M_a, b_a = self.pipeA.compute(p_n, fluid_Ta, N, NUM_STATES=NUM_STATES)
-        M_b, b_b = self.pipeB.compute(p_n, fluid_Tb, N, NUM_STATES=NUM_STATES)
+        M_a, b_a = self.pipeA.compute(p_n, N, NUM_STATES=NUM_STATES)
+        M_b, b_b = self.pipeB.compute(p_n, N, NUM_STATES=NUM_STATES)
         # TODO multiple fluids? Different for each pipe
 
         # coolprop properties
-        p̄_a_val = (p̄_a+fluid['p_ref']).asNumber(u.Pa) # we use these unitless-versions in Coolprop lookups a few times. Lets convert to the proper units only once for speed
-        p̄_b_val = (p̄_b+fluid['p_ref']).asNumber(u.Pa)
+        p̄_a_val = (p̄_a+self.pipeA.fluid['p_ref']).asNumber(u.Pa) # we use these unitless-versions in Coolprop lookups a few times. Lets convert to the proper units only once for speed
+        p̄_b_val = (p̄_b+self.pipeB.fluid['p_ref']).asNumber(u.Pa)
         T̄_a_val = T̄_a.asNumber(u.K)
         T̄_b_val = T̄_b.asNumber(u.K)
 
-        ρ_a = PropsSI('DMASS', 'P', p̄_a_val, 'T', T̄_a_val, fluid['name']) * u.kg/(u.m**3) # [kg/m^3] : fluid density
-        ρ_b = PropsSI('DMASS', 'P', p̄_b_val, 'T', T̄_b_val, fluid['name']) * u.kg/(u.m**3) # [kg/m^3] : fluid density
-        μ_a = PropsSI("VISCOSITY", "P", p̄_a_val, 'T', T̄_a_val, fluid["name"]) * u.Pa*u.s # [Pa*s] : fluid viscosity
-        μ_b = PropsSI("VISCOSITY", "P", p̄_b_val, 'T', T̄_b_val, fluid["name"]) * u.Pa*u.s # [Pa*s] : fluid viscosity
-        Pr_a = PropsSI('PRANDTL', 'P', p̄_a_val, 'T', T̄_a_val, fluid['name']) # [ul] : Prandtl Number
-        Pr_b = PropsSI('PRANDTL', 'P', p̄_b_val, 'T', T̄_b_val, fluid['name']) # [ul] : Prandtl Number
-        Cp_a = PropsSI('CPMASS', 'P', p̄_a_val, 'T', T̄_a_val, fluid['name']) # [J/kg/K] : Specific Heat Capacity
-        Cp_b = PropsSI('CPMASS', 'P', p̄_b_val, 'T', T̄_b_val, fluid['name']) # [J/kg/K] : Specific Heat Capacity
+        ρ_a = PropsSI('DMASS', 'P', p̄_a_val, 'T', T̄_a_val, self.pipeA.fluid['name']) * u.kg/(u.m**3) # [kg/m^3] : fluid density
+        ρ_b = PropsSI('DMASS', 'P', p̄_b_val, 'T', T̄_b_val, self.pipeB.fluid['name']) * u.kg/(u.m**3) # [kg/m^3] : fluid density
+        μ_a = PropsSI("VISCOSITY", "P", p̄_a_val, 'T', T̄_a_val, self.pipeA.fluid["name"]) * u.Pa*u.s # [Pa*s] : fluid viscosity
+        μ_b = PropsSI("VISCOSITY", "P", p̄_b_val, 'T', T̄_b_val, self.pipeB.fluid["name"]) * u.Pa*u.s # [Pa*s] : fluid viscosity
+        Pr_a = PropsSI('PRANDTL', 'P', p̄_a_val, 'T', T̄_a_val, self.pipeA.fluid['name']) # [ul] : Prandtl Number
+        Pr_b = PropsSI('PRANDTL', 'P', p̄_b_val, 'T', T̄_b_val, self.pipeB.fluid['name']) # [ul] : Prandtl Number
+        Cp_a = PropsSI('CPMASS', 'P', p̄_a_val, 'T', T̄_a_val, self.pipeA.fluid['name']) # [J/kg/K] : Specific Heat Capacity
+        Cp_b = PropsSI('CPMASS', 'P', p̄_b_val, 'T', T̄_b_val, self.pipeB.fluid['name']) # [J/kg/K] : Specific Heat Capacity
 
         # Reynolds Number
         Dh_a = self.pipeA.Do_in - self.pipeA.Di_in
@@ -147,11 +144,10 @@ class AdiabaticPipe(): # TODO this name is Pipe? does this only work for pipes?
         self.outlet_node = pipe.outlet_node
         self.num_nodes = 2 # TODO inherit this - how do we deal with adibatic tees
     
-    def compute(self, p_n, fluid, N, NUM_STATES=2):
+    def compute(self, p_n, N, NUM_STATES=2):
         '''Returns the linear algebra matricies to solve for the next iteration in a pipe
 
         p_n : solution column vector [p0, p1, p2, ..., ṁ0, ṁ1, ṁ2, ..., T1, T2, ...], at current iteration n, for each node index
-        fluid : Dict of fluid properties {name:water, T_ref:215K, p_ref:atm} to pass to CoolProp
         N : total number of nodes, indicates 1/3 number of eqs ie size of matrix
         NUM_STATES : number of fluid properties tracked ie. pressure & massflow & temp = 3
 
@@ -170,12 +166,11 @@ class AdiabaticPipe(): # TODO this name is Pipe? does this only work for pipes?
         T̄ = (T1+T2)/2
 
         # pass the fluid-flow calculations to the child pipe
-        fluid_T = fluid.copy() # create a version of fluid with T_ref = T̄ for the fluid-flow calculations
-        fluid_T['T_ref'] = T̄
-        M_f, b_f = self.pipe.compute(p_n, fluid_T, N, NUM_STATES=NUM_STATES)
+        self.pipe.fluid['T_ref'] = T̄ # set fluid ref-temp to actual temp for property lookup
+        M_f, b_f = self.pipe.compute(p_n, N, NUM_STATES=NUM_STATES)
 
-        ρ = PropsSI('DMASS', 'P', (p̄+fluid['p_ref']).asNumber(u.Pa), 'T', T̄.asNumber(u.K), fluid['name']) * u.kg/(u.m**3) # [kg/m^3] : fluid density
-        Cp = PropsSI('CPMASS', 'P', (p̄+fluid['p_ref']).asNumber(u.Pa), 'T', T̄.asNumber(u.K), fluid['name']) * u.J/(u.kg*u.K) # [J/kg*K] : fluid mass specific heat
+        ρ = PropsSI('DMASS', 'P', (p̄+self.pipe.fluid['p_ref']).asNumber(u.Pa), 'T', T̄.asNumber(u.K), self.pipe.fluid['name']) * u.kg/(u.m**3) # [kg/m^3] : fluid density
+        Cp = PropsSI('CPMASS', 'P', (p̄+self.pipe.fluid['p_ref']).asNumber(u.Pa), 'T', T̄.asNumber(u.K), self.pipe.fluid['name']) * u.J/(u.kg*u.K) # [J/kg*K] : fluid mass specific heat
 
         # temperature matrices
         M_T, b_T = temp_matrix_assemble(self.pipe, ρ, Cp, ṁ1, ṁ2, T1, T2, 0*u.W, N)
@@ -253,7 +248,7 @@ if __name__ == "__main__":
     #     4, (0,2)
     # )
     my_tp = AdiabaticPipe(
-        pipes.Pipe(1*u.m, 2*u.inch, 0,1, 0, 0*u.m)
+        pipes.Pipe(1*u.m, 2*u.inch, 0,1, 0, 0*u.m, {'name':'water', 'T_ref':300*u.K, 'p_ref':u.atm})
     )
     p = np.array([1*u.Pa, 1*u.Pa, 1*u.kg/u.s, 1*u.kg/u.s, 300*u.K, 300*u.K])
-    print(my_tp.compute(p, {'name':'water', 'T_ref':300*u.K, 'p_ref':u.atm}, 2))
+    print(my_tp.compute(p, 2, NUM_STATES=3))

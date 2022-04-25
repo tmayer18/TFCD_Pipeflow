@@ -6,7 +6,7 @@
 from colebrook_friction_factor import fully_turbulent_f, iterative_solve_colebrook
 from unum_units import Unum2
 from unum_units import units2 as u
-from CoolProp.CoolProp import PropsSI
+from CoolProp.CoolProp import PropsSI, FluidsList
 
 import numpy as np
 π = np.pi
@@ -18,7 +18,7 @@ class FluidFlow():
     '''Parent class for pipes/elbows/annulus ect...
     Contains momentum and mass conservation equations solving for pressure and massflow'''
 
-    def __init__(self, Di_in, Do_in, Di_out, Do_out, inlet_node, outlet_node, loss, L, ϵD, K, Δz):
+    def __init__(self, Di_in, Do_in, Di_out, Do_out, inlet_node, outlet_node, loss, L, ϵD, K, Δz, fluid):
         '''initialize an instance of FlowFlow
         Di_in [m] : Inlet annulus inner diameter
         Do_in [m] : Inlet annulus outer diameter
@@ -28,9 +28,10 @@ class FluidFlow():
         outlet_noew [idx] : location node of the outlet
         loss [str] : type of losses - 'major' or 'minor'
         L [m] : Length of pipe - used in major loss calculation
-        ϵD [ul] : Relative roughness - used in major loss calculation
+        ϵD [ul] : Relative roughness, based on hydraulic diameer - used in major loss calculation
         K [ul] : Loss Coefficient, typically K=c*ft
         Δz [m] : elevation change, z_out-z_in
+        fluid [dict()] : description of fluid flowing, {name:water, T_ref:215K, p_ref:atm}
         * Units listed may be ignored if a Unum unit-aware numbers is used'''
         
         self.Di_in = Unum2.coerceToUnum(Di_in).asUnit(u.m) # [m] : diameter
@@ -43,7 +44,7 @@ class FluidFlow():
         self.num_nodes = 2 # number of nodes, ∴ number of eqs
         self.nodes = (inlet_node, outlet_node)
 
-        assert loss in ["major", "minor"], "loss-type must be 'major' or 'minor'"
+        assert loss in ["major", "minor"], "loss-type must be 'major' or 'minor'" # FIXME replace assertions with valid exception raising
         self.loss = loss
 
         self.L = Unum2.coerceToUnum(L).asUnit(u.m) # [m] : length
@@ -51,13 +52,15 @@ class FluidFlow():
         self.K = Unum2.coerceToUnum(K).asUnit(u.ul) # [ul] : loss coefficient, tpically K=ft*C
         self.Δz = Unum2.coerceToUnum(Δz).asUnit(u.m) # [m] : elevation change
 
+        assert fluid['name'].lower() in [f.lower() for f in FluidsList()], f"{fluid['name']} is not in CoolProp"
+        self.fluid = fluid.copy()
+
         self.compute = self.compute_flow # alias redirect for the compute call
 
-    def compute_flow(self, p_n, fluid, N, NUM_STATES=2):
+    def compute_flow(self, p_n, N, NUM_STATES=2):
         '''Returns the linear algebra matricies to solve for the next iteration in a pipe
 
         p_n : solution column vector [p0, p1, p2, ..., ṁ0, ṁ1, ṁ2, ...], at current iteration n, for each node index
-        fluid : Dict of fluid properties {name:water, T_ref:215K, p_ref:atm} to pass to CoolProp
         N : total number of nodes, indicates 1/2 number of eqs ie size of matrix
         NUM_STATES : number of fluid properties tracked ie. pressure & massflow = 2
 
@@ -74,8 +77,8 @@ class FluidFlow():
         p̄ = (p1+p2)/2
 
         # fluid properties extracted from CoolProp
-        ρ = PropsSI("DMASS", "P", (p̄+fluid['p_ref']).asNumber(u.Pa), "T", fluid["T_ref"].asNumber(u.K), fluid["name"]) * u.kg/(u.m**3) # [kg/m^3] : fluid density
-        μ = PropsSI("VISCOSITY", "P", (p̄+fluid['p_ref']).asNumber(u.Pa), "T", fluid["T_ref"].asNumber(u.K), fluid["name"]) * u.Pa*u.s # [Pa*s] : fluid viscosity
+        ρ = PropsSI("DMASS", "P", (p̄+self.fluid['p_ref']).asNumber(u.Pa), "T", self.fluid["T_ref"].asNumber(u.K), self.fluid["name"]) * u.kg/(u.m**3) # [kg/m^3] : fluid density
+        μ = PropsSI("VISCOSITY", "P", (p̄+self.fluid['p_ref']).asNumber(u.Pa), "T", self.fluid["T_ref"].asNumber(u.K), self.fluid["name"]) * u.Pa*u.s # [Pa*s] : fluid viscosity
         γ = ρ*g
         
         Dh = self.Do_in - self.Di_in # hydraulic diameter - calculated at the inlet side
@@ -83,7 +86,7 @@ class FluidFlow():
         # calculating the head loss
         if self.loss == "major":
             # calculating the friction factor
-            Re = abs(4*ṁ1/(π*μ*Dh)).asUnit(u.ul) # TODO Re and ϵD is based on hydraulic diameter here
+            Re = abs(4*ṁ1/(π*μ*Dh)).asUnit(u.ul)
             f = iterative_solve_colebrook(self.ϵD, Re)
             loss_coef = f*self.L/Dh
         elif self.loss == "minor":
@@ -108,59 +111,63 @@ class FluidFlow():
 class Pipe(FluidFlow):
     '''Defines and solves flow in a pipe object, containing dimensions and nodal connections'''
 
-    def __init__(self, L, D, inlet_node, outlet_node, ϵD, Δz):
+    def __init__(self, L, D, inlet_node, outlet_node, ϵD, Δz, fluid):
         '''initialize an instance of Pipe()
         L [m] : Length of Pipe
         D [m] : Diameter of Pipe
         inlet_node [index] : location node of pipe inlet
         outlet_node [index] : location node of pipe outlet
-        ϵD [ul] : Relative Roughness, ϵ/D
+        ϵD [ul] : Relative Roughness, ϵ/Dh
         Δz [m] : Elevation change, z_out-z_in
+        fluid [dict()] : description of fluid flowing, {name:water, T_ref:215K, p_ref:atm}
         * Units listed may be ignored if a Unum unit-aware numbers is used'''
 
         # in a pipe, outer diameter is constant, annular inner diameter is zero
-        super().__init__(0*u.m, D, 0*u.m, D, inlet_node, outlet_node, "major", L, ϵD, 0, Δz)
+        super().__init__(0*u.m, D, 0*u.m, D, inlet_node, outlet_node, "major", L, ϵD, 0, Δz, fluid)
         
 class Annulus(FluidFlow):
     '''Defines and solves flow in an annular pipe pbject, containing dimensions and nodal connections'''
 
-    def __init__(self, L, Di, Do, inlet_node, outlet_node, ϵD, Δz):
+    def __init__(self, L, Di, Do, inlet_node, outlet_node, ϵD, Δz, fluid):
         '''initialize an instance of Annulus()
         L [m] : Length of annular pipe
         Di [m] : Inner diameter of annulus
         Do [m] : Outer diameter of annulus
         inlet_node [index] : location node of the annulus output
         outlet_node [index] : location node of annular output
-        ϵD [ul] : Relative Roughness, ϵ/D
+        ϵD [ul] : Relative Roughness, ϵ/Dh
         Δz [m] : Elevation change, z_out-z_in
+        fluid [dict()] : description of fluid flowing, {name:water, T_ref:215K, p_ref:atm}
         * Units listed may be ignored if a Unum unit-aware numbers is used'''
 
-        super().__init__(Di, Do, Di, Do, inlet_node, outlet_node, "major", L, ϵD, 0, Δz)
+        super().__init__(Di, Do, Di, Do, inlet_node, outlet_node, "major", L, ϵD, 0, Δz, fluid)
 
 class Minor(FluidFlow):
     '''Defines a minor-loss object, (ex elbow, nozzle, ect...), containing dimensions and nodal connections'''
 
-    def __init__(self, Di, Do, inlet_node, outlet_node, K):
+    def __init__(self, Di, Do, inlet_node, outlet_node, K, fluid):
         '''initialize an instance of Minor()
         Di [m] : Inlet Diameter
         Do [m] : Outlet Diameter
         inlet_node [index] : location node of inlet
         outlet_node [index] : location node of outlet
         K [ul] : Loss Coefficient, typically K=c*ft
+        fluid [dict()] : description of fluid flowing, {name:water, T_ref:215K, p_ref:atm}
         * Units listed may be ignored if a Unum unit-aware numbers is used'''
 
-        super().__init__(0*u.m, Di, 0*u.m, Do, inlet_node, outlet_node, "minor", 0*u.m, 0, K, 0*u.m)
+        super().__init__(0*u.m, Di, 0*u.m, Do, inlet_node, outlet_node, "minor", 0*u.m, 0, K, 0*u.m, fluid)
 
 class Tee():
     '''Defines a tee object, containing dimensions and nodal connections'''
 
-    def __init__(self, D, inlet_nodes, outlet_nodes, run_nodes, ϵD, C_run=20, C_branch=60):
+    def __init__(self, D, inlet_nodes, outlet_nodes, run_nodes, ϵD, fluid, C_run=20, C_branch=60):
         '''initialize an instance of Tee
         D [m] : Tee Diameter (only constant diameter tees supported)
         inlet_nodes (idx, idx) : Up to 2 inlet node locations
         outlet_nodes (idx, idx) : Up to 2 outlet node locations
         run_nodes (idx, idx) : Which 2 nodes form the run of the tee
-        ϵD [ul] : Relative roughness'''
+        ϵD [ul] : Relative roughness
+        fluid [dict()] : description of fluid flowing, {name:water, T_ref:215K, p_ref:atm}'''
         
         self.D = D # [m] : Tee Diameter (only supports constant diameter tees)
         ft = fully_turbulent_f(ϵD)
@@ -204,13 +211,15 @@ class Tee():
         self.num_nodes = 3 # number of nodes, ∴ number of eqs
         self.nodes = self.inlet_nodes+self.outlet_nodes
 
+        assert fluid['name'].lower() in [f.lower() for f in FluidsList()], f"{fluid['name']} is not in CoolProp"
+        self.fluid = fluid.copy()
+
         self.compute = self.compute_tee # redirect alias for compute -> compute_tee
 
-    def compute_tee(self, p_n, fluid, N, NUM_STATES=2):
+    def compute_tee(self, p_n, N, NUM_STATES=2):
         '''Returns the linear algebra matricies to solve for the next iteration in a minor-loss component
 
         p_n : solution column vector [p0, p1, p2, ..., ṁ0, ṁ1, ṁ2, ...], at current iteration n, for each node index
-        fluid : Dict of fluid properties {name:water, T_ref:215K, p_ref:atm} to pass to CoolProp
         N : total number of nodes, indicates 1/2 number of eqs ie size of matrix
         NUM_STATES : number of fluid properties tracked ie. pressure & massflow = 2
 
@@ -234,7 +243,7 @@ class Tee():
 
         # fluid properties extracted from CoolProp
         p̄ = sum((p_in1, p_in2, p_out1, p_out2))/4
-        ρ = PropsSI("DMASS", "P", (p̄+fluid['p_ref']).asNumber(u.Pa), "T", fluid["T_ref"].asNumber(u.K), fluid["name"]) * u.kg/(u.m**3) # [kg/m^3] : fluid density
+        ρ = PropsSI("DMASS", "P", (p̄+self.fluid['p_ref']).asNumber(u.Pa), "T", self.fluid["T_ref"].asNumber(u.K), self.fluid["name"]) * u.kg/(u.m**3) # [kg/m^3] : fluid density
 
         K1 = self.K1 # ease of access
         K2 = self.K2
@@ -308,23 +317,15 @@ def matrix_expander(A, NxM, row:tuple, col:tuple=(0,)):
 if __name__ == "__main__":
     # print(matrix_expander([[1,2],[3,4]], (4,3), (1,3), (1,2)))
 
-    inch = Unum2.unit('inch', 2.54*u.cm, "inch")
-    feet = Unum2.unit('ft', 12*inch, "foot")
-    kgps = Unum2.unit('kgps', u.kg/u.s, "kilogram-per-second")
-    lbf = Unum2.unit('lb', 4.44822*u.N, "poundf")
-    slug = Unum2.unit('slug', 14.5939*u.kg, "slug")
-    psf = Unum2.unit('psf', lbf/(feet**2), "pound-per-square-foot")
-    psi = Unum2.unit('psi', lbf/(inch**2), "pound=per=square-inch")
-
     # testcase - Single Pipe described in Homework 1
-    my_pipe = Pipe(6*feet, 0.936*inch, 0, 1, 2e-4*feet/(0.9368*inch), 1*feet)
-    water = {"ρ":1.94*slug/(feet**3), "μ":2.34e-5*lbf*u.s/(feet**2), "T_ref":300*u.K, "name":"water"}
-    test_p_n = np.array([[2304*psf, 2304*psf, 0.1*slug/u.s, 0.1*slug/u.s]]).T
-    test_A, test_b = my_pipe.compute(test_p_n, water, 2)
+    water = {"ρ":1.94*u.slug/(u.ft**3), "μ":2.34e-5*u.lbf*u.s/(u.ft**2), "T_ref":300*u.K, 'p_ref':0*u.Pa, "name":"water"}
+    my_pipe = Pipe(6*u.ft, 0.936*u.inch, 0, 1, 2e-4*u.ft/(0.9368*u.inch), 1*u.ft, water)
+    test_p_n = np.array([[2304*u.psf, 2304*u.psf, 0.1*u.slug/u.s, 0.1*u.slug/u.s]]).T
+    test_A, test_b = my_pipe.compute(test_p_n, 2, NUM_STATES=2)
     test_A = np.append(test_A, np.array([[1*u.ul,0,0,0]]), axis=0) # BC1
-    test_b = np.append(test_b, np.array([[16*psi]]), axis=0)
+    test_b = np.append(test_b, np.array([[16*u.psi]]), axis=0)
     test_A = np.append(test_A, np.array([[0,1*u.ul,0,0]]), axis=0)  # BC2
-    test_b = np.append(test_b, np.array([[14.7*psi]]), axis=0)
+    test_b = np.append(test_b, np.array([[14.7*u.psi]]), axis=0)
     print(test_A)
     print(test_b)
     print("========== PAD UNITS =========")
@@ -335,7 +336,7 @@ if __name__ == "__main__":
     print(A_inv)
     print("=============== START MATRIX MUL ================")
     p = A_inv@test_b # solve Ax = b
-    p = Unum2.arr_as_unit(p, np.array([[psf, psf, slug/u.s, slug/u.s]]).T)
+    p = Unum2.arr_as_unit(p, np.array([[u.psf, u.psf, u.slug/u.s, u.slug/u.s]]).T)
     print(p)
 
     # this solution matches the iteration-1 solution hand-solved for in our verification case from homework 1 🎉

@@ -21,10 +21,10 @@ class BoundaryCondition():
         self.nodes = (node,)
 
     # pylint: disable=unused-argument
-    def compute(self, p_n, fluid, N, NUM_STATES=2):
+    def compute(self, p_n, N, NUM_STATES=2):
         '''alias redirect for the compute call
         
-        voids the p_n and fluid inputs, as they are unneeded, and forwards N to apply_boundary_condition
+        voids the p_n unneeded input, and forwards N to apply_boundary_condition
         N: total number of nodes, indates 1/2 number of eqs ie size of matrix
         NUM_STATES : number of fluid properties tracked ie. pressure & massflow = 2
         '''

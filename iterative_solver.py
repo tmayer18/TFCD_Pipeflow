@@ -17,10 +17,9 @@ logger = logging.getLogger(__name__)
 
 # TODO i suspect the unit conversions take a lot of time? Analyze that time and see if cacheing something could make calculations faster
 
-def iterative_compute(pipe_network, fluid, desired_tolerance, max_iterations, p_0, N, NUM_STATES):
+def iterative_compute(pipe_network, desired_tolerance, max_iterations, p_0, N, NUM_STATES):
     '''Iteratively solves for the state of a pipe-network
     pipe_network : List of pipe-structure objects
-    fluid : string of fluid to lookup properties in coolprop
     desired_tolerance : consequetive change between iterations to stop iterating at
     max_iterations : cap of iterations to compute
     p_0 : initial solution vector [p1, p2, ... ṁ1, ṁ2, ... T1, T2, ...]
@@ -38,7 +37,7 @@ def iterative_compute(pipe_network, fluid, desired_tolerance, max_iterations, p_
         b = np.empty((0,1))
         
         for elem in pipe_network:
-            Ai, bi = elem.compute(p_n, fluid, N, NUM_STATES=NUM_STATES)
+            Ai, bi = elem.compute(p_n, N, NUM_STATES=NUM_STATES)
             A = np.append(A, Ai, axis=0) # append matrix-linearized equations to the matrix
             b = np.append(b, bi, axis=0)
 

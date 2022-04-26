@@ -17,7 +17,7 @@ class BoundaryCondition():
         self.bc_type = bc_type # [str] : the kind of bc this is
         assert bc_type in ["pressure", "mass_flowrate", "temperature"], f"Boundary condition '{bc_type}' is not supported!"
 
-        self.num_nodes = 1
+        self.num_eqs = 1
         self.nodes = (node,)
 
     # pylint: disable=unused-argument

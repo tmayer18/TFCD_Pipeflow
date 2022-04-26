@@ -23,22 +23,24 @@ def network_analysis(pipe_network, NUM_STATES):
     last_node = -1
     pipe_likes = 0
     for elem in pipe_network:
-        N += elem.num_nodes
+        N += elem.num_eqs
         last_node = max((last_node,)+elem.nodes)
         if type(elem) in [pipes.Minor, pipes.Pipe, pipes.Tee, pipes.Annulus, thermal.AdiabaticPipe]:
             pipe_likes += 1 # count the number of pipe-likes in the network
         if type(elem) in [thermal.ThermallyConnected]:
             pipe_likes += 2
 
-    N = int(N/2) # Each node in the network shows up exactly twice in the network, at the start and end of its pipe-like, or as a boundary condition # FIXME this isn't right anymore
-    assert last_node+1 == N, "There aren't enough equations!"
+    N = N//NUM_STATES # each state should have one equation per node
+    if not last_node+1 == N:
+        raise ValueError(f"There aren't enough equations! {N=} but {last_node+1=}")
     logger.info("There are %i pipe-likes in the network, requiring a %ix%i matrix to solve\n", pipe_likes, N*NUM_STATES, N*NUM_STATES)
 
     return N
 
 def uniform_fluidflow(network, NUM_STATES, ṁ=0.1*u.kg/u.s, p=u.atm):
     '''initializes a uniform pressure and massflow field at each node'''
-    assert NUM_STATES==2, 'fluid flow only initializes 2 states: p, ṁ'
+    if not NUM_STATES==2:
+        raise ValueError(f'fluid flow only initializes 2 states: p, ṁ. {NUM_STATES=}')
     N = network_analysis(network, NUM_STATES)
     p_0 = np.concatenate((
         np.ones((N,1))*p,   # TODO these as base units for speed? We chould check that
@@ -48,7 +50,8 @@ def uniform_fluidflow(network, NUM_STATES, ṁ=0.1*u.kg/u.s, p=u.atm):
 
 def uniform_thermal_fluidflow(network, NUM_STATES, ṁ=0.1*u.kg/u.s, p=u.atm, T=300*u.K):
     '''initialized a uniform temperature, pressure and massflow field at each node'''
-    assert NUM_STATES==3, 'thermal fluid flow initializes 3 states: p, ṁ, T'
+    if not NUM_STATES==3:
+        raise ValueError(f'thermal fluid flow initializes 3 states: p, ṁ, T. {NUM_STATES=}')
     N = network_analysis(network, NUM_STATES)
     p_0 = np.concatenate((
         np.ones((N,1))*p,

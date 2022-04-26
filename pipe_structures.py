@@ -41,7 +41,7 @@ class FluidFlow():
 
         self.inlet_node = inlet_node # [index]
         self.outlet_node = outlet_node # [index]
-        self.num_nodes = 2 # number of nodes, ∴ number of eqs
+        self.num_eqs = 2 # number of equations, one COE one COM
         self.nodes = (inlet_node, outlet_node)
 
         assert loss in ["major", "minor"], "loss-type must be 'major' or 'minor'" # FIXME replace assertions with valid exception raising
@@ -52,7 +52,10 @@ class FluidFlow():
         self.K = Unum2.coerceToUnum(K).asUnit(u.ul) # [ul] : loss coefficient, tpically K=ft*C
         self.Δz = Unum2.coerceToUnum(Δz).asUnit(u.m) # [m] : elevation change
 
-        assert fluid['name'].lower() in [f.lower() for f in FluidsList()], f"{fluid['name']} is not in CoolProp"
+        if 'use_coolprop' not in fluid:
+            fluid['use_coolprop'] = True # default to using coolprop unless override present
+        if fluid['use_coolprop']:
+            assert fluid['name'].lower() in [f.lower() for f in FluidsList()], f"{fluid['name']} is not in CoolProp"
         self.fluid = fluid.copy()
 
         self.compute = self.compute_flow # alias redirect for the compute call
@@ -77,8 +80,12 @@ class FluidFlow():
         p̄ = (p1+p2)/2
 
         # fluid properties extracted from CoolProp
-        ρ = PropsSI("DMASS", "P", (p̄+self.fluid['p_ref']).asNumber(u.Pa), "T", self.fluid["T_ref"].asNumber(u.K), self.fluid["name"]) * u.kg/(u.m**3) # [kg/m^3] : fluid density
-        μ = PropsSI("VISCOSITY", "P", (p̄+self.fluid['p_ref']).asNumber(u.Pa), "T", self.fluid["T_ref"].asNumber(u.K), self.fluid["name"]) * u.Pa*u.s # [Pa*s] : fluid viscosity
+        if self.fluid['use_coolprop']:
+            ρ = PropsSI("DMASS", "P", (p̄+self.fluid['p_ref']).asNumber(u.Pa), "T", self.fluid["T_ref"].asNumber(u.K), self.fluid["name"]) * u.kg/(u.m**3) # [kg/m^3] : fluid density
+            μ = PropsSI("VISCOSITY", "P", (p̄+self.fluid['p_ref']).asNumber(u.Pa), "T", self.fluid["T_ref"].asNumber(u.K), self.fluid["name"]) * u.Pa*u.s # [Pa*s] : fluid viscosity
+        else:
+            ρ = self.fluid['ρ']
+            μ = self.fluid['μ']
         γ = ρ*g
         
         Dh = self.Do_in - self.Di_in # hydraulic diameter - calculated at the inlet side
@@ -208,10 +215,13 @@ class Tee():
         else:
             self.K2 = K_branch
 
-        self.num_nodes = 3 # number of nodes, ∴ number of eqs
+        self.num_eqs = 3 # number of equations, two COE one COM
         self.nodes = self.inlet_nodes+self.outlet_nodes
 
-        assert fluid['name'].lower() in [f.lower() for f in FluidsList()], f"{fluid['name']} is not in CoolProp"
+        if 'use_coolprop' not in fluid:
+            fluid['use_coolprop'] = True # default to using coolprop unless override present
+        if fluid['use_coolprop']:
+            assert fluid['name'].lower() in [f.lower() for f in FluidsList()], f"{fluid['name']} is not in CoolProp"
         self.fluid = fluid.copy()
 
         self.compute = self.compute_tee # redirect alias for compute -> compute_tee
@@ -242,9 +252,12 @@ class Tee():
         ṁ_out = ṁ_out1
 
         # fluid properties extracted from CoolProp
-        p̄ = sum((p_in1, p_in2, p_out1, p_out2))/4
-        ρ = PropsSI("DMASS", "P", (p̄+self.fluid['p_ref']).asNumber(u.Pa), "T", self.fluid["T_ref"].asNumber(u.K), self.fluid["name"]) * u.kg/(u.m**3) # [kg/m^3] : fluid density
-
+        if self.fluid['use_coolprop']:
+            p̄ = sum((p_in1, p_in2, p_out1, p_out2))/4
+            ρ = PropsSI("DMASS", "P", (p̄+self.fluid['p_ref']).asNumber(u.Pa), "T", self.fluid["T_ref"].asNumber(u.K), self.fluid["name"]) * u.kg/(u.m**3) # [kg/m^3] : fluid density
+        else:
+            ρ = self.fluid['ρ']
+            
         K1 = self.K1 # ease of access
         K2 = self.K2
 

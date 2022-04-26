@@ -206,3 +206,49 @@ solver.print_results_table(p_n, ṁ_units=(u.slug/u.s), p_units=(u.psi), has_tem
 
 print("Expected ṁ = 0.07119 [slug/s]")
 print("Expected T1=T2 = 315K")
+
+# %% Simple pipe-in-pipe counterflow heat exchanger, Heat Transfer Textbook ex 11.1
+NUM_STATES = 3
+
+water = {
+    "name":"water",
+    "T_ref":300*u.K,
+    "p_ref":0*u.Pa,
+    "use_coolprop":False, # disable coolprop property lookup to match textbook properties
+    "Cp":2131*u.J/u.kg/u.K,
+    "μ":725e-6*u.N*u.s/(u.m**2),
+    "ρ":1/(1.007e-3*u.m**3/u.kg),
+    "k":0.625*u.W/u.m/u.K,
+    "Pr":4.85
+}
+oil = {
+    "name":"oil", # engine oil, not a coolprop fluid
+    "T_ref":300*u.K,
+    "p_ref":0*u.Pa,
+    "use_coolprop":False, # disable coolprop, as its not even a fluid in coolprop
+    "Cp":2131*u.J/u.kg/u.K,
+    "μ":3.25e-2*u.N*u.s/(u.m**2),
+    "ρ":853*u.kg/(u.m**3),
+    "k":0.138*u.W/u.m/u.K,
+    "Pr":None
+}
+
+pipe_network = (
+    thermal.ThermallyConnected(
+        pipes.Annulus(65.9*u.m, 25*u.mm, 45*u.mm, 0,1, 0,0*u.m, oil),
+        pipes.Pipe(65.9*u.m, 25*u.mm, 2,3, 0,0*u.m, water),
+        thermal.NestedPipeWall(1e-12*u.W/u.m/u.K), # neglecting conduction resistance, probably will cause div/by/zero error
+        (0,2)
+    ),
+    bc.BoundaryCondition(0, 0.1*u.kg/u.s, 'mass_flowrate'),
+    bc.BoundaryCondition(2, -0.2*u.kg/u.s, 'mass_flowrate'),
+    bc.BoundaryCondition(0, u.atm, 'pressure'),
+    bc.BoundaryCondition(2, u.atm, 'pressure'),
+    bc.BoundaryCondition(0, (100+273.15)*u.K, 'temperature'),
+    bc.BoundaryCondition(2, (30+273.15)*u.K, 'temperature'),
+)
+
+p_0, N = init.uniform_thermal_fluidflow(pipe_network, NUM_STATES)
+
+p_n = solver.iterative_compute(pipe_network, 1e-8, 100, p_0, N, NUM_STATES)
+solver.print_results_table(p_n, has_temp=True)

@@ -42,6 +42,8 @@ class ThermallyConnected():
             else:
                 raise ValueError("Node index values don't match")
 
+        self.num_eqs = 6 # number of equations provided, 4 from child pipe flow, 2 from thermal equations
+
         self.wall.send_dimensions(pipeA, pipeB) # update the wall with the dimensions of the two pipes
 
     def compute(self, p_n, N, NUM_STATES=3):
@@ -83,20 +85,33 @@ class ThermallyConnected():
         M_b, b_b = self.pipeB.compute(p_n, N, NUM_STATES=NUM_STATES)
         # TODO multiple fluids? Different for each pipe
 
-        # coolprop properties
+        # fluid properties, using coolprop if enabled
         p̄_a_val = (p̄_a+self.pipeA.fluid['p_ref']).asNumber(u.Pa) # we use these unitless-versions in Coolprop lookups a few times. Lets convert to the proper units only once for speed
         p̄_b_val = (p̄_b+self.pipeB.fluid['p_ref']).asNumber(u.Pa)
         T̄_a_val = T̄_a.asNumber(u.K)
         T̄_b_val = T̄_b.asNumber(u.K)
 
-        ρ_a = PropsSI('DMASS', 'P', p̄_a_val, 'T', T̄_a_val, self.pipeA.fluid['name']) * u.kg/(u.m**3) # [kg/m^3] : fluid density
-        ρ_b = PropsSI('DMASS', 'P', p̄_b_val, 'T', T̄_b_val, self.pipeB.fluid['name']) * u.kg/(u.m**3) # [kg/m^3] : fluid density
-        μ_a = PropsSI("VISCOSITY", "P", p̄_a_val, 'T', T̄_a_val, self.pipeA.fluid["name"]) * u.Pa*u.s # [Pa*s] : fluid viscosity
-        μ_b = PropsSI("VISCOSITY", "P", p̄_b_val, 'T', T̄_b_val, self.pipeB.fluid["name"]) * u.Pa*u.s # [Pa*s] : fluid viscosity
-        Pr_a = PropsSI('PRANDTL', 'P', p̄_a_val, 'T', T̄_a_val, self.pipeA.fluid['name']) # [ul] : Prandtl Number
-        Pr_b = PropsSI('PRANDTL', 'P', p̄_b_val, 'T', T̄_b_val, self.pipeB.fluid['name']) # [ul] : Prandtl Number
-        Cp_a = PropsSI('CPMASS', 'P', p̄_a_val, 'T', T̄_a_val, self.pipeA.fluid['name']) # [J/kg/K] : Specific Heat Capacity
-        Cp_b = PropsSI('CPMASS', 'P', p̄_b_val, 'T', T̄_b_val, self.pipeB.fluid['name']) # [J/kg/K] : Specific Heat Capacity
+        if self.pipeA.fluid['use_coolprop']:
+            ρ_a = PropsSI('DMASS', 'P', p̄_a_val, 'T', T̄_a_val, self.pipeA.fluid['name']) * u.kg/(u.m**3) # [kg/m^3] : fluid density
+            μ_a = PropsSI("VISCOSITY", "P", p̄_a_val, 'T', T̄_a_val, self.pipeA.fluid["name"]) * u.Pa*u.s # [Pa*s] : fluid viscosity
+            Pr_a = PropsSI('PRANDTL', 'P', p̄_a_val, 'T', T̄_a_val, self.pipeA.fluid['name']) # [ul] : Prandtl Number
+            Cp_a = PropsSI('CPMASS', 'P', p̄_a_val, 'T', T̄_a_val, self.pipeA.fluid['name']) * u.J/u.kg/u.K # [J/kg/K] : Specific Heat Capacity
+        else:
+            ρ_a = self.pipeA.fluid['ρ']
+            μ_a = self.pipeA.fluid['μ']
+            Pr_a = self.pipeA.fluid['Pr']
+            Cp_a = self.pipeA.fluid['Cp']
+
+        if self.pipeB.fluid['use_coolprop']:
+            ρ_b = PropsSI('DMASS', 'P', p̄_b_val, 'T', T̄_b_val, self.pipeB.fluid['name']) * u.kg/(u.m**3) # [kg/m^3] : fluid density
+            μ_b = PropsSI("VISCOSITY", "P", p̄_b_val, 'T', T̄_b_val, self.pipeB.fluid["name"]) * u.Pa*u.s # [Pa*s] : fluid viscosity
+            Pr_b = PropsSI('PRANDTL', 'P', p̄_b_val, 'T', T̄_b_val, self.pipeB.fluid['name']) # [ul] : Prandtl Number
+            Cp_b = PropsSI('CPMASS', 'P', p̄_b_val, 'T', T̄_b_val, self.pipeB.fluid['name']) * u.J/u.kg/u.K # [J/kg/K] : Specific Heat Capacity
+        else:
+            ρ_b = self.pipeB.fluid['ρ']
+            μ_b = self.pipeB.fluid['μ']
+            Pr_b = self.pipeB.fluid['Pr']
+            Cp_b = self.pipeB.fluid['Cp']
 
         # Reynolds Number
         Dh_a = self.pipeA.Do_in - self.pipeA.Di_in
@@ -117,7 +132,11 @@ class ThermallyConnected():
         R_tol = R_a + R_b + R_wall
 
         # calculate heat transfer between pipes, Q
-        ΔT_lm = (T1_a - T2_a + T2_b - T1_b)/(np.log((T2_a - T2_b)/(T1_a - T1_b)))
+        try:
+            ΔT_lm = (T1_a - T2_a + T2_b - T1_b)/(math.log((T2_a - T2_b)/(T1_a - T1_b)))
+        except ZeroDivisionError: # catch the error where T1_a==T1_b                # TODO put zerodivision catches elsewhere in the code
+            ΔT_lm = 0*u.K
+        
         Q = ΔT_lm / R_tol
 
         # temperature matrices (abstracted into function since we do it twice)
@@ -142,7 +161,7 @@ class AdiabaticPipe(): # TODO this name is Pipe? does this only work for pipes?
 
         self.inlet_node = pipe.inlet_node
         self.outlet_node = pipe.outlet_node
-        self.num_nodes = 2 # TODO inherit this - how do we deal with adibatic tees
+        self.num_eqs = 3 # number of equations provided, 2 from child pipe flow, one from thermal
     
     def compute(self, p_n, N, NUM_STATES=2):
         '''Returns the linear algebra matricies to solve for the next iteration in a pipe
@@ -169,8 +188,12 @@ class AdiabaticPipe(): # TODO this name is Pipe? does this only work for pipes?
         self.pipe.fluid['T_ref'] = T̄ # set fluid ref-temp to actual temp for property lookup
         M_f, b_f = self.pipe.compute(p_n, N, NUM_STATES=NUM_STATES)
 
-        ρ = PropsSI('DMASS', 'P', (p̄+self.pipe.fluid['p_ref']).asNumber(u.Pa), 'T', T̄.asNumber(u.K), self.pipe.fluid['name']) * u.kg/(u.m**3) # [kg/m^3] : fluid density
-        Cp = PropsSI('CPMASS', 'P', (p̄+self.pipe.fluid['p_ref']).asNumber(u.Pa), 'T', T̄.asNumber(u.K), self.pipe.fluid['name']) * u.J/(u.kg*u.K) # [J/kg*K] : fluid mass specific heat
+        if self.pipe.fluid['use_coolprop']:
+            ρ = PropsSI('DMASS', 'P', (p̄+self.pipe.fluid['p_ref']).asNumber(u.Pa), 'T', T̄.asNumber(u.K), self.pipe.fluid['name']) * u.kg/(u.m**3) # [kg/m^3] : fluid density
+            Cp = PropsSI('CPMASS', 'P', (p̄+self.pipe.fluid['p_ref']).asNumber(u.Pa), 'T', T̄.asNumber(u.K), self.pipe.fluid['name']) * u.J/(u.kg*u.K) # [J/kg*K] : fluid mass specific heat
+        else:
+            ρ = self.pipe.fluid['ρ']
+            Cp = self.pipe.fluid['Cp']
 
         # temperature matrices
         M_T, b_T = temp_matrix_assemble(self.pipe, ρ, Cp, ṁ1, ṁ2, T1, T2, 0*u.W, N)
@@ -238,7 +261,7 @@ class NestedPipeWall(ThermalWall):
         self.areaB = 2*π*L*rB
 
             # ported from Scheuyler's getR() function
-        self.resistance = math.log(innerPipe.Do_in/annularPipe.Di_in)/(2*π*L*self.k).asUnit(u.K/u.W) # [K/W] : conductive resistance
+        self.resistance = (math.log(innerPipe.Do_in/annularPipe.Di_in)/(2*π*L*self.k)).asUnit(u.K/u.W) # [K/W] : conductive resistance
     
 
 if __name__ == "__main__":

@@ -20,10 +20,14 @@ from unum import Unum, IncompatibleUnitsError
 import unum.units as u
 import numpy as np
 
+class Repr2Str(str): # A version of string that always prints with the str method, written to print matrices in exception messages
+    def __repr__(self): return str(self) # replace the repr with the str method
+
 class UnitError(TypeError):
     '''An operation has a problem with units'''
     # a reimplementation because none of the Unum exceptions let you pass an arbitrary string
     def __init__(self, *args):
+        args =tuple((Repr2Str(arg) for arg in args))
         super().__init__(self, *args)
 
 # we'll need to np.vectorize a bunch of methods so they work on all elements of a matrix.
@@ -134,7 +138,7 @@ class Unum2(Unum):
         if not np.all(match_array): # a prexisting unit was incorrect
             ii, jj = np.where(np.logical_not(match_array))
             errored_elements = [(i,j) for i, j in zip(ii,jj)]
-            raise UnitError(f"apply_padded_units has discovered input units that will not produce the desired output units, in cells {errored_elements}")
+            raise UnitError(f"apply_padded_units has discovered input units that will not produce the desired output units, in cells {errored_elements} of matrix\n{A_units}")
 
         return A_val*corrected_units
 
@@ -160,10 +164,10 @@ class Unum2(Unum):
         def wrapped_method(self, *args, method_str=method_str, ignores_zero=ignores_zero):
             # if method_str in ['__add__', '__mul__', '__radd__']:
             #     print(f"unum math {method_str} : {self}, {args} --> ", end='')
-            if method_str in ignores_zero: # operations that should ignore zeros with units
+            if method_str in ignores_zero and not self.check_match_units(args[0]): # operations that should ignore zeros with units when they don't match
                 other_is_zero = Unum2.coerceToUnum(args[0]).asNumber() == 0
                 self_is_zero = self.asNumber() == 0
-                if self_is_zero and other_is_zero: return 0 # anniahalite the units
+                if self_is_zero and other_is_zero: return 0 # anniahalite the units, hoping somewhere else a correction will be applied
                 elif other_is_zero: return self # otherwise, keep the units of the non-zero
                 elif self_is_zero:  return args[0]
                 

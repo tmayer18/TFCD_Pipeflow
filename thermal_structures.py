@@ -12,6 +12,10 @@ from pipe_structures import matrix_expander
 from nusselt_correlations import convection_coefficient_lookup
 from CoolProp.CoolProp import PropsSI
 
+# DEBUG
+import logging
+logger = logging.getLogger(__name__)
+
 π = np.pi
 g = 9.81*u.m/(u.s**2) # [m/s^2]
 
@@ -83,7 +87,6 @@ class ThermallyConnected():
 
         M_a, b_a = self.pipeA.compute(p_n, N, NUM_STATES=NUM_STATES)
         M_b, b_b = self.pipeB.compute(p_n, N, NUM_STATES=NUM_STATES)
-        # TODO multiple fluids? Different for each pipe
 
         # fluid properties, using coolprop if enabled
         p̄_a_val = (p̄_a+self.pipeA.fluid['p_ref']).asNumber(u.Pa) # we use these unitless-versions in Coolprop lookups a few times. Lets convert to the proper units only once for speed
@@ -94,22 +97,26 @@ class ThermallyConnected():
         if self.pipeA.fluid['use_coolprop']:
             ρ_a = PropsSI('DMASS', 'P', p̄_a_val, 'T', T̄_a_val, self.pipeA.fluid['name']) * u.kg/(u.m**3) # [kg/m^3] : fluid density
             μ_a = PropsSI("VISCOSITY", "P", p̄_a_val, 'T', T̄_a_val, self.pipeA.fluid["name"]) * u.Pa*u.s # [Pa*s] : fluid viscosity
+            k_a = PropsSI("CONDUCTIVITY", "P", p̄_a_val, 'T', T̄_a_val, self.pipeA.fluid["name"]) * u.W/u.m/u.K # [W/m/K] : fluid conductivity
             Pr_a = PropsSI('PRANDTL', 'P', p̄_a_val, 'T', T̄_a_val, self.pipeA.fluid['name']) # [ul] : Prandtl Number
             Cp_a = PropsSI('CPMASS', 'P', p̄_a_val, 'T', T̄_a_val, self.pipeA.fluid['name']) * u.J/u.kg/u.K # [J/kg/K] : Specific Heat Capacity
         else:
             ρ_a = self.pipeA.fluid['ρ']
             μ_a = self.pipeA.fluid['μ']
+            k_a = self.pipeA.fluid['k']
             Pr_a = self.pipeA.fluid['Pr']
             Cp_a = self.pipeA.fluid['Cp']
 
         if self.pipeB.fluid['use_coolprop']:
             ρ_b = PropsSI('DMASS', 'P', p̄_b_val, 'T', T̄_b_val, self.pipeB.fluid['name']) * u.kg/(u.m**3) # [kg/m^3] : fluid density
             μ_b = PropsSI("VISCOSITY", "P", p̄_b_val, 'T', T̄_b_val, self.pipeB.fluid["name"]) * u.Pa*u.s # [Pa*s] : fluid viscosity
+            k_b = PropsSI("CONDUCTIVITY", "P", p̄_b_val, 'T', T̄_b_val, self.pipeB.fluid["name"]) * u.W/u.m/u.K # [W/m/K] : fluid conductivity
             Pr_b = PropsSI('PRANDTL', 'P', p̄_b_val, 'T', T̄_b_val, self.pipeB.fluid['name']) # [ul] : Prandtl Number
             Cp_b = PropsSI('CPMASS', 'P', p̄_b_val, 'T', T̄_b_val, self.pipeB.fluid['name']) * u.J/u.kg/u.K # [J/kg/K] : Specific Heat Capacity
         else:
             ρ_b = self.pipeB.fluid['ρ']
             μ_b = self.pipeB.fluid['μ']
+            k_b = self.pipeB.fluid['k']
             Pr_b = self.pipeB.fluid['Pr']
             Cp_b = self.pipeB.fluid['Cp']
 
@@ -117,11 +124,11 @@ class ThermallyConnected():
         Dh_a = self.pipeA.Do_in - self.pipeA.Di_in
         Dh_b = self.pipeB.Do_in - self.pipeB.Di_in
         Re_a = abs(4*ṁ1_a/(π*μ_a*Dh_a)).asUnit(u.ul)
-        Re_b = abs(4*ṁ1_a/(π*μ_b*Dh_b)).asUnit(u.ul)
+        Re_b = abs(4*ṁ1_b/(π*μ_b*Dh_b)).asUnit(u.ul)
 
         # lookup convection coefficients
-        h_a = convection_coefficient_lookup(self.pipeA, Pr_a, Re_a, T̄_b, T̄_a, self.wall.k)
-        h_b = convection_coefficient_lookup(self.pipeB, Pr_b, Re_b, T̄_a, T̄_b, self.wall.k)
+        h_a = convection_coefficient_lookup(self.pipeA, Pr_a, Re_a, T̄_b, T̄_a, k_a)
+        h_b = convection_coefficient_lookup(self.pipeB, Pr_b, Re_b, T̄_a, T̄_b, k_b)
         # NOTE here we assume the surf. temp of one fluid is the mean temp of the other... not strictly true
 
         # calculate thermal resistance
@@ -136,11 +143,15 @@ class ThermallyConnected():
             ΔT_lm = (T1_a - T2_a + T2_b - T1_b)/(math.log((T2_a - T2_b)/(T1_a - T1_b)))
         except ZeroDivisionError: # catch the error where T1_a==T1_b                # TODO put zerodivision catches elsewhere in the code
             ΔT_lm = 0*u.K
+        # except ValueError: # catch the physically invalid case where cold_out > hot_in # FIXME are there other ValueErrors that could be thrown here?
+        #     pass
+        # TODO the case where Ta=Ta and Tb=Tb, where Tlm=Ta-Tb
         
-        Q = ΔT_lm / R_tol
+        Q = ΔT_lm / R_tol # positive Q is heat out of pipeA -> pipeB
+        logger.debug("Heat Transfer Q=%s at ΔT_lm=%s", Q, ΔT_lm)
 
         # temperature matrices (abstracted into function since we do it twice)
-        M_Ta, b_Ta = temp_matrix_assemble(self.pipeA, ρ_a, Cp_a, ṁ1_a, ṁ2_a, T1_a, T2_a, Q, N)
+        M_Ta, b_Ta = temp_matrix_assemble(self.pipeA, ρ_a, Cp_a, ṁ1_a, ṁ2_a, T1_a, T2_a, -Q, N)
         M_Tb, b_Tb = temp_matrix_assemble(self.pipeB, ρ_b, Cp_b, ṁ1_b, ṁ2_b, T1_b, T2_b, Q, N)
 
         # assemble all matrices together
@@ -242,14 +253,14 @@ class NestedPipeWall(ThermalWall):
     def send_dimensions(self, pipeA, pipeB):
         if isinstance(pipeA, pipes.Annulus):
             annularPipe = pipeA
-            rA = pipeA.Di_in # radius of pipe A is inner dimension
+            rA = pipeA.Di_in/2 # radius of pipe A is inner dimension
             innerPipe = pipeB
-            rB = pipeB.Do_in
+            rB = pipeB.Do_in/2
         elif isinstance(pipeA, pipes.Annulus):
             annularPipe = pipeB
-            rB = pipeB.Di_in
+            rB = pipeB.Di_in/2
             innerPipe = pipeA
-            rA = pipeA.Do_in
+            rA = pipeA.Do_in/2
         assert isinstance(innerPipe, pipes.Pipe) and isinstance(annularPipe, pipes.Annulus), 'NestedPipeWall must contain one pipe and one annulus'
 
         # t = (annularPipe.Di_in - innerPipe.Do_in)/2 # [m] : thickness of wall

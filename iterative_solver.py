@@ -17,14 +17,15 @@ logger = logging.getLogger(__name__)
 
 # TODO i suspect the unit conversions take a lot of time? Analyze that time and see if cacheing something could make calculations faster
 
-def iterative_compute(pipe_network, desired_tolerance, max_iterations, p_0, N, NUM_STATES):
+def iterative_compute(pipe_network, desired_tolerance, max_iterations, p_0, N, NUM_STATES, relax=1):
     '''Iteratively solves for the state of a pipe-network
     pipe_network : List of pipe-structure objects
     desired_tolerance : consequetive change between iterations to stop iterating at
     max_iterations : cap of iterations to compute
     p_0 : initial solution vector [p1, p2, ... ṁ1, ṁ2, ... T1, T2, ...]
     N : Number of nodes in the network
-    NUM_STATES : properties at each node to compute, ie pressure and massflow = 2'''
+    NUM_STATES : properties at each node to compute, ie pressure and massflow = 2
+    relax : under-relaxation factor. Useful for unstable solution iteration'''
 
     #Iterate on the equations
     err = 10e2 # init error value
@@ -47,16 +48,15 @@ def iterative_compute(pipe_network, desired_tolerance, max_iterations, p_0, N, N
         Ainv = Unum2.unit_aware_inv(A)
         p_n1 = Ainv@b # solve linear equation Ax=b
 
-        p_n1_ul, _ = Unum2.strip_units(p_n1) # to compare percent change, we don't care about units
-        p_n_ul, _ = Unum2.strip_units(p_n)
+        p_n1_ul, _ = Unum2.strip_units(Unum2.arr_as_base_unit(p_n1)) # to compare percent change, we don't care about units
+        p_n_ul, _ = Unum2.strip_units(Unum2.arr_as_base_unit(p_n))
         err = max(abs( (p_n_ul-p_n1_ul)/(p_n_ul+1e-16) )) # largest percent change in any solution value
 
         logger.debug("Solution Vector at iteration %i: %s", i, Unum2.arr_as_unit(p_n1, iter_solution_log.get_logging_units(N, NUM_STATES))) # TODO logger configure for units
         logger.info("Error at iteration %i: %f", i, err)
 
         i+=1
-        p_n = p_n1.copy() # p_n = p_n+1
-        # copy is necessary cause pointers. Otherwise they will be the same object
+        p_n = relax*p_n1 + (1-relax)*p_n # p_n = p_n+1, with underrelaxation
 
     if i >= max_iterations:
         logger.warning("The solution is not converged. Iterations terminated after iteration limit was reached")
@@ -92,10 +92,12 @@ class iter_solution_log():
         return ret_units
 
 # results printing
-def print_results_table(p, has_temp=False, ṁ_units=u.kg/u.s, p_units=u.Pa, T_units=u.K):
+def print_results_table(p, has_temp=False, ṁ_units=u.kg/u.s, p_units=u.Pa, T_units=u.K, use_celsius=False):
     table = []
     p = np.array(p).flatten()
     N = len(p)//(2+has_temp)
+
+
     for n in range(N): # collect a single node on the table
         entry = []
         entry.append(n) # node number
@@ -103,7 +105,19 @@ def print_results_table(p, has_temp=False, ṁ_units=u.kg/u.s, p_units=u.Pa, T_u
         entry.append(p[n].asNumber(p_units))
         if has_temp:
             entry.append(p[n+2*N].asNumber(T_units))
+
+            if use_celsius:
+                if T_units == u.K:
+                    entry[-1] -= 273.15 # convert K to °C
+                else:
+                    raise NotImplementedError
         table.append(entry)
+
+    if use_celsius: # units with offset conversions aren't supported, so we handle it at print as a special case
+        class Celsius(): # tiny class to mimic the method of unum2
+            def strUnit(self): return "°C"
+        T_units = Celsius()
+
     headers = ["Node #", f"ṁ {ṁ_units.strUnit()}", f"p {p_units.strUnit()}"]
     if has_temp:
         headers.append(f"T {T_units.strUnit()}")

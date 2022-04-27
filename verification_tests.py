@@ -14,7 +14,7 @@ import solution_initialization as init
 import iterative_solver as solver
 from colebrook_friction_factor import fully_turbulent_f
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 
 # %% Single Pipe - Homework 3     ===================================================
 NUM_STATES = 2 # pressure and massflow
@@ -196,7 +196,7 @@ pipe_network = (
     bc.BoundaryCondition(1, 14.7*u.psi, 'pressure')
 )
 
-p_0, N = init.uniform_thermal_fluidflow(pipe_network, NUM_STATES)
+p_0, N = init.seq_thermal_unif_fluidflow(pipe_network, NUM_STATES)
 
 # iter_solution_log.config(pressure_units=u.psf, massflow_units=u.slug/u.s)
 p_n = solver.iterative_compute(pipe_network, 1e-8, 100, p_0, N, NUM_STATES)
@@ -215,7 +215,7 @@ water = {
     "T_ref":300*u.K,
     "p_ref":0*u.Pa,
     "use_coolprop":False, # disable coolprop property lookup to match textbook properties
-    "Cp":2131*u.J/u.kg/u.K,
+    "Cp":4178*u.J/u.kg/u.K,
     "μ":725e-6*u.N*u.s/(u.m**2),
     "ρ":1/(1.007e-3*u.m**3/u.kg),
     "k":0.625*u.W/u.m/u.K,
@@ -245,10 +245,15 @@ pipe_network = (
     bc.BoundaryCondition(0, u.atm, 'pressure'),
     bc.BoundaryCondition(2, u.atm, 'pressure'),
     bc.BoundaryCondition(0, (100+273.15)*u.K, 'temperature'),
-    bc.BoundaryCondition(2, (30+273.15)*u.K, 'temperature'),
+    bc.BoundaryCondition(3, (30+273.15)*u.K, 'temperature'),
 )
 
 p_0, N = init.uniform_thermal_fluidflow(pipe_network, NUM_STATES)
 
-p_n = solver.iterative_compute(pipe_network, 1e-8, 100, p_0, N, NUM_STATES)
-solver.print_results_table(p_n, has_temp=True)
+p_n = solver.iterative_compute(pipe_network, 1e-8, 500, p_0, N, NUM_STATES, relax=0.5)
+
+print(' SOLUTION ')
+solver.print_results_table(p_n, has_temp=True, use_celsius=True)
+print("Expected T1 = 60°C")
+
+# interestingly, using EITHER a uniform init and relaxation OR sequential init and no relax both solve this problem properly

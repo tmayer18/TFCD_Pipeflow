@@ -61,7 +61,7 @@ def convection_coefficient_lookup(pipeElem,Pr,Re,Ts,Tm,k):
         else: # For Laminar Flow
             Nu = 4.364
             if Re>2300:
-                logger.warning("Dittus Bolter is not valid for this pipe, but no other correlation is available. Defaulting to Laminar Nu although Re = %s", Re)
+                logger.warning("Dittus Bolter is not valid for this Pipe(), but no other correlation is available. Defaulting to Laminar Nu although Re = %s", Re)
 
     Dh = pipeElem.Do_in - pipeElem.Di_in # hydraulic diameter of the pipe or annulus
 

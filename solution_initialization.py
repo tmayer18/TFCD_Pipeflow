@@ -57,6 +57,18 @@ def uniform_thermal_fluidflow(network, NUM_STATES, ṁ=0.1*u.kg/u.s, p=u.atm, T=
         np.ones((N,1))*p,
         np.ones((N,1))*ṁ,
         np.ones((N,1))*T
+        ))
+    return p_0, N
+
+def seq_thermal_unif_fluidflow(network, NUM_STATES, ṁ=0.1*u.kg/u.s, p=u.atm, T=300*u.K):
+    '''initialized a uniform pressure and massflow field, and a sequential temperature field at each node'''
+    if not NUM_STATES==3:
+        raise ValueError(f'thermal fluid flow initializes 3 states: p, ṁ, T. {NUM_STATES=}')
+    N = network_analysis(network, NUM_STATES)
+    p_0 = np.concatenate((
+        np.ones((N,1))*p,
+        np.ones((N,1))*ṁ,
+        np.ones((N,1))*T +np.arange(0,N).reshape((N,1))*u.K
     ))
     return p_0, N
 

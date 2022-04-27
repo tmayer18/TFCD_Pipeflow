@@ -211,7 +211,7 @@ class units2():
     psi =   Unum2.unit('psi', lbf/(inch**2), 'pounds-per-square-inch')
     psf =   Unum2.unit('psf', lbf/(ft**2), 'pound-per-square-foot')
     atm =   Unum2.unit('atm', 14.696*psi, 'atmospheric-pressure')
-    Rk =    Unum2.unit('Rk', 1.8*K, 'Rankine')
+    Rk =    Unum2.unit('Rk', K/1.8, 'Rankine')
 
 
 if __name__ == "__main__":

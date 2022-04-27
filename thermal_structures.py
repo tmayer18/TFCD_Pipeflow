@@ -141,11 +141,10 @@ class ThermallyConnected():
         # calculate heat transfer between pipes, Q
         try:
             ΔT_lm = (T1_a - T2_a + T2_b - T1_b)/(math.log((T2_a - T2_b)/(T1_a - T1_b)))
-        except ZeroDivisionError: # catch the error where T1_a==T1_b                # TODO put zerodivision catches elsewhere in the code
+        except ZeroDivisionError: # catch vanilla python division error. Using numpy64 floats prevents this usualy                # TODO put zerodivision catches elsewhere in the code
             ΔT_lm = 0*u.K
-        # except ValueError: # catch the physically invalid case where cold_out > hot_in # FIXME are there other ValueErrors that could be thrown here?
-        #     pass
-        # TODO the case where Ta=Ta and Tb=Tb, where Tlm=Ta-Tb
+        if T1_a==T2_a and T1_b==T2_b:
+            ΔT_lm = T1_a-T1_b # the uniform T case.
         
         Q = ΔT_lm / R_tol # positive Q is heat out of pipeA -> pipeB
         logger.debug("Heat Transfer Q=%s at ΔT_lm=%s", Q, ΔT_lm)

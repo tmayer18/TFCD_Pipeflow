@@ -40,17 +40,22 @@ def convection_coefficient_lookup(pipeElem,Pr,Re,Ts,Tm,k):
             for n in range(len(Re_Turbulent)-1): # Reynolds Number Interpolation
                 if Re_Turbulent[n] <= Re < Re_Turbulent[n+1]:
                     Nu_Single_Interp = Nu_Turbulent[n] + (Re-Re_Turbulent[n])/(Re_Turbulent[n+1]-Re_Turbulent[n])*(Nu_Turbulent[n+1]-Nu_Turbulent[n])
-            
+                    break
+                elif Re >= Re_Turbulent[n+1]: # Re is above the range
+                    Nu_Single_Interp = Nu_Turbulent[-1] # set to biggest range
+
             for n in range(len(Pr_Turbulent)-1): # Prandtl Number Interpolation
                 if Pr_Turbulent[n] <= Pr < Pr_Turbulent[n+1]:
                     Nu = Nu_Single_Interp[n] + (Pr - Pr_Turbulent[n])/(Pr_Turbulent[n+1] - Pr_Turbulent[n])*(Nu_Single_Interp[n+1] - Nu_Single_Interp[n])
-        
+                    break
+                elif Pr > Pr_Turbulent[n+1]:
+                    Nu = Nu_Single_Interp[-1]
 
     # Finds Nusselt Number for a Pipe
     if isinstance(pipeElem, pipes.Pipe):
         # Dittus Bolter
         if 0.6<=Pr<=160 and Re>=10000:
-            if Ts > Tm: # Solid is hotter than Pipe Water
+            if Ts >= Tm: # Solid is hotter than Pipe Water
                 n = 0.4
                 C = 0.0243
             elif Ts < Tm: # Pipe Water is hotter than Solid

@@ -253,7 +253,7 @@ p_0, N = init.uniform_thermal_fluidflow(pipe_network, NUM_STATES)
 p_n = solver.iterative_compute(pipe_network, 1e-8, 500, p_0, N, NUM_STATES, relax=0.5)
 
 print(' SOLUTION ')
-solver.print_results_table(p_n, has_temp=True, use_celsius=True)
+solver.print_results_table(p_n, has_temp=True, rel_temp=True)
 print("Expected T1 = 60°C")
 
 # interestingly, using EITHER a uniform init and relaxation OR sequential init and no relax both solve this problem properly

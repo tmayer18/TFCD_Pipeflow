@@ -92,7 +92,7 @@ class iter_solution_log():
         return ret_units
 
 # results printing
-def print_results_table(p, has_temp=False, ṁ_units=u.kg/u.s, p_units=u.Pa, T_units=u.K, use_celsius=False):
+def print_results_table(p, has_temp=False, ṁ_units=u.kg/u.s, p_units=u.Pa, T_units=u.K, rel_temp=False):
     table = []
     p = np.array(p).flatten()
     N = len(p)//(2+has_temp)
@@ -106,17 +106,24 @@ def print_results_table(p, has_temp=False, ṁ_units=u.kg/u.s, p_units=u.Pa, T_u
         if has_temp:
             entry.append(p[n+2*N].asNumber(T_units))
 
-            if use_celsius:
+            if rel_temp: # handle offset units as a special case at print-time
                 if T_units == u.K:
                     entry[-1] -= 273.15 # convert K to °C
+                elif T_units == u.Rk:
+                    entry[-1] -= 459.67 # convert R to °F
                 else:
                     raise NotImplementedError
         table.append(entry)
 
-    if use_celsius: # units with offset conversions aren't supported, so we handle it at print as a special case
-        class Celsius(): # tiny class to mimic the method of unum2
-            def strUnit(self): return "°C"
-        T_units = Celsius()
+    if rel_temp: # handle offset units as a special case at print-time
+        if T_units == u.K:
+            class Celsius(): # tiny class to mimic the method of unum2
+                def strUnit(self): return "°C"
+            T_units = Celsius()
+        elif T_units == u.Rk:
+            class Fahrenheit(): # tiny class to mimic the method of unum2
+                def strUnit(self): return "°F"
+            T_units = Fahrenheit()
 
     headers = ["Node #", f"ṁ {ṁ_units.strUnit()}", f"p {p_units.strUnit()}"]
     if has_temp:

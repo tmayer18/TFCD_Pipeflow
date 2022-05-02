@@ -52,7 +52,7 @@ def iterative_compute(pipe_network, desired_tolerance, max_iterations, p_0, N, N
         p_n_ul, _ = Unum2.strip_units(Unum2.arr_as_base_unit(p_n))
         err = max(abs( (p_n_ul-p_n1_ul)/(p_n_ul+1e-16) )) # largest percent change in any solution value
 
-        logger.debug("Solution Vector at iteration %i: %s", i, Unum2.arr_as_unit(p_n1, iter_solution_log.get_logging_units(N, NUM_STATES))) # TODO logger configure for units
+        logger.debug("Solution Vector at iteration %i: %s", i, Unum2.arr_as_unit(p_n1, iter_solution_log.get_logging_units(N, NUM_STATES)))
         logger.info("Error at iteration %i: %f", i, err)
 
         i+=1
@@ -92,7 +92,7 @@ class iter_solution_log():
         return ret_units
 
 # results printing
-def print_results_table(p, has_temp=False, ṁ_units=u.kg/u.s, p_units=u.Pa, T_units=u.K, rel_temp=False):
+def print_results_table(p, has_temp=False, ṁ_units=u.kg/u.s, p_units=u.Pa, T_units=u.K, rel_temp=False, node_conversions=None):
     table = []
     p = np.array(p).flatten()
     N = len(p)//(2+has_temp)
@@ -100,7 +100,10 @@ def print_results_table(p, has_temp=False, ṁ_units=u.kg/u.s, p_units=u.Pa, T_u
 
     for n in range(N): # collect a single node on the table
         entry = []
-        entry.append(n) # node number
+        if node_conversions:
+            entry.append(node_conversions[n])
+        else:
+            entry.append(n) # node number
         entry.append(p[n+N].asNumber(ṁ_units))
         entry.append(p[n].asNumber(p_units))
         if has_temp:
@@ -118,11 +121,11 @@ def print_results_table(p, has_temp=False, ṁ_units=u.kg/u.s, p_units=u.Pa, T_u
     if rel_temp: # handle offset units as a special case at print-time
         if T_units == u.K:
             class Celsius(): # tiny class to mimic the method of unum2
-                def strUnit(self): return "°C"
+                def strUnit(self): return "[°C]"
             T_units = Celsius()
         elif T_units == u.Rk:
             class Fahrenheit(): # tiny class to mimic the method of unum2
-                def strUnit(self): return "°F"
+                def strUnit(self): return "[°F]"
             T_units = Fahrenheit()
 
     headers = ["Node #", f"ṁ {ṁ_units.strUnit()}", f"p {p_units.strUnit()}"]

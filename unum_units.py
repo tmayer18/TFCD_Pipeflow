@@ -129,6 +129,7 @@ class Unum2(Unum):
         v_isinstance = np.vectorize(isinstance)
 
         units_matrix = Unum2.arr_normalize(b_units@np.reciprocal(x_units).T) # expected units of A based on solution and constant vector
+        #FIXME prior line takes 100x the time of the rest of this function
         expected_units = Unum2.strip_units(units_matrix)[1]
         corrected_units = np.where(v_isinstance(A_units, Unum), A_units, expected_units) # where the original matrix had a non-Unum 1, inject the expected unit
 
@@ -147,8 +148,8 @@ class Unum2(Unum):
         '''performs linear-algebra matrix inversion, with unit-aware operations
          * all elements must have appropiate units, including zeros, as matrix-inversion operations may change zeros to numbers'''
         A = Unum2.arr_as_base_unit(A) # drop to consistent base-units
+        #FIXME as_base_unit takes 100x longer to run than anything else in this function
         A_vals, A_units = Unum2.strip_units(A)
-
         Ainv_vals = np.linalg.inv(A_vals)
         Ainv_units = np.reciprocal(A_units).T # when all the units are consistent, the inverse matrix's units are the Transpose of each units recripocal
 

@@ -255,7 +255,7 @@ class NestedPipeWall(ThermalWall):
             rA = pipeA.Di_in/2 # radius of pipe A is inner dimension
             innerPipe = pipeB
             rB = pipeB.Do_in/2
-        elif isinstance(pipeA, pipes.Annulus):
+        elif isinstance(pipeB, pipes.Annulus):
             annularPipe = pipeB
             rB = pipeB.Di_in/2
             innerPipe = pipeA

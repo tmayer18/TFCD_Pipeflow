@@ -6,15 +6,13 @@
 import numpy as np
 import pipe_structures as pipes
 import thermal_structures as thermal
+import boundary_conditions as bc
 from unum_units import units2 as u
 import logging
 
 logger = logging.getLogger(__name__)
 
 # provides initialization of solution-vectors
-
-# TODO we suspect that Temperature will need to be initialized based on their boundary conditions - a uniform starting temp will never change?
-# this may be wrong though as at least one temperature in each fluid-loop will eventully propagate out of the specificed boundary conditions? We'll test that
 
 def network_analysis(pipe_network, NUM_STATES):
     '''analyzed an input piping network, checking for appropiate equations '''
@@ -72,3 +70,48 @@ def seq_thermal_unif_fluidflow(network, NUM_STATES, ṁ=0.1*u.kg/u.s, p=u.atm, T
     ))
     return p_0, N
 
+def normalize_node_numbers(network):
+    '''Modifies a network such that the nodes are properly enumerated. Useful for solving parts of large networks without manually renumbering'''
+
+    src_nodes = set()
+    for elem in network:
+        for n in elem.nodes:
+            src_nodes.add(n)
+    old_nodes_lookup = dict(enumerate(src_nodes)) #old[2] -> 67
+    new_nodes_lookup = dict((v,k) for k,v in old_nodes_lookup.items()) # invert dictionary, new[67] -> 2
+
+    def update_nodes(elem, new_nodes_lookup):
+        if isinstance(elem, pipes.FluidFlow):
+            elem.inlet_node = new_nodes_lookup[elem.inlet_node]
+            elem.outlet_node = new_nodes_lookup[elem.outlet_node]
+            elem.nodes = (elem.inlet_node, elem.outlet_node)
+        elif isinstance(elem, pipes.Tee):
+            elem.inlet_nodes = tuple(new_nodes_lookup[n] for n in elem.inlet_nodes)
+            elem.outlet_nodes = tuple(new_nodes_lookup[n] for n in elem.outlet_nodes)
+            elem.run_nodes = tuple(new_nodes_lookup[n] for n in elem.run_nodes)
+            elem.nodes = elem.inlet_nodes+elem.outlet_nodes
+        elif isinstance(elem, thermal.ThermallyConnected):
+            update_nodes(elem.pipeA, new_nodes_lookup)
+            update_nodes(elem.pipeB, new_nodes_lookup)
+            elem.nodes = elem.pipeA.nodes+elem.pipeB.nodes
+            elem.same_side_nodes = tuple(new_nodes_lookup[n] for n in elem.same_side_nodes)
+            elem.inlet_node_a, elem.inlet_node_b = elem.same_side_nodes
+            other_side_nodes = set(elem.nodes) - set(elem.same_side_nodes)
+            for n in other_side_nodes:
+                if n in elem.pipeA.nodes:
+                    elem.outlet_node_a = n
+                elif n in elem.pipeB.nodes:
+                    elem.outlet_node_b = n
+        elif isinstance(elem, thermal.AdiabaticPipe):
+            update_nodes(elem.pipe, new_nodes_lookup)
+            elem.nodes = elem.pipe.nodes
+            elem.inlet_node = elem.pipe.inlet_node
+            elem.outlet_node = elem.pipe.outlet_node
+        elif isinstance(elem, bc.BoundaryCondition):
+            elem.node = new_nodes_lookup[elem.node]
+            elem.nodes = (elem.node,)
+
+    for elem in network:
+        update_nodes(elem, new_nodes_lookup)
+
+    return network, old_nodes_lookup

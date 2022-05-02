@@ -53,8 +53,8 @@ def convection_coefficient_lookup(pipeElem,Pr,Re,Ts,Tm,k):
 
     # Finds Nusselt Number for a Pipe
     if isinstance(pipeElem, pipes.Pipe):
-        # Dittus Bolter
-        if 0.6<=Pr<=160 and Re>=10000:
+        # Dittus Boelter
+        if 0.6<=Pr<=160 and Re>=4000:#10000:
             if Ts >= Tm: # Solid is hotter than Pipe Water
                 n = 0.4
                 C = 0.0243
@@ -62,11 +62,12 @@ def convection_coefficient_lookup(pipeElem,Pr,Re,Ts,Tm,k):
                 n = 0.3
                 C = 0.0265
             Nu = C*Re**0.8*Pr**n
+            # logger.debug("Pipe(n=%s) used Dittus Boelter at Re=%s", pipeElem.inlet_node, Re)
 
         else: # For Laminar Flow
             Nu = 4.364
             if Re>2300:
-                logger.warning("Dittus Bolter is not valid for this Pipe(), but no other correlation is available. Defaulting to Laminar Nu although Re = %s", Re)
+                logger.warning("Dittus Boelter is not valid for this Pipe(n=%s) b/c Pr=%s, but no other correlation is available. Defaulting to Laminar Nu although Re=%s", pipeElem.inlet_node, Pr, Re)
 
     Dh = pipeElem.Do_in - pipeElem.Di_in # hydraulic diameter of the pipe or annulus
 
@@ -76,6 +77,6 @@ def convection_coefficient_lookup(pipeElem,Pr,Re,Ts,Tm,k):
 if __name__ == "__main__":
     from unum_units import units2 as u
     fluid={'name':'water'}
-    my_pipe = pipes.Pipe(1*u.m, 0.5*u.m, 0,1, 0, 0*u.m, fluid)
+    my_pipe = pipes.Pipe(1*u.m, 0.014*u.m, 0,1, 0, 0*u.m, fluid)
     my_ann = pipes.Annulus(1*u.m, 0.5*u.m, 0.6*u.m, 0,1, 0,0*u.m, fluid)
-    print(convection_coefficient_lookup(my_ann, 30, 2.9e5, 1,1, 10*u.W/u.m/u.K))
+    print(convection_coefficient_lookup(my_pipe, 30, 2.9e5, 1,1, 10*u.W/u.m/u.K))

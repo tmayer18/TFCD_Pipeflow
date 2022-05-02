@@ -4,6 +4,7 @@
 # 1/30/2022
 
 import numpy as np
+from unum_units import Unum2
 from unum_units import units2 as u
 
 # Module contains classes for encapsulating data around pipe-network boundary conditions
@@ -13,9 +14,16 @@ class BoundaryCondition():
 
     def __init__(self, node, value, bc_type):
         self.node = node # [index] : location node this boundary condition applies to
-        self.value = value # [some-units] : known value at this location
+        # self.value = value # [some-units] : known value at this location
         self.bc_type = bc_type # [str] : the kind of bc this is
         assert bc_type in ["pressure", "mass_flowrate", "temperature"], f"Boundary condition '{bc_type}' is not supported!"
+
+        if bc_type == "pressure":
+            self.value = Unum2.coerceToUnum(value).asUnit(u.Pa)
+        if bc_type == "mass_flowrate":
+            self.value = Unum2.coerceToUnum(value).asUnit(u.kg/u.s)
+        if bc_type == "temperature":
+            self.value = Unum2.coerceToUnum(value).asUnit(u.K)
 
         self.num_eqs = 1
         self.nodes = (node,)
